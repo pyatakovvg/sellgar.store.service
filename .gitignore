@@ -1,0 +1,47 @@
+# compiled output
+dist/
+dev-dist/
+build/
+lib/
+types/
+node_modules
+.env
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+*.tsbuildinfo*
+
+# OS
+.DS_Store
+
+# Tests
+/coverage
+/.nyc_output
+
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+
+# IDEs and editors
+/.idea
+
+storybook-static/
