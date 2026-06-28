@@ -3,12 +3,12 @@ import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, OneToMa
 import { InventoryModel } from './inventory.model';
 import { PriceHistoryModel } from './price-history.model';
 import { StoreProductModel } from './store-product.model';
-import { StoreProductStatus } from './store-product-status.enum';
+import { StoreOfferStatus } from './store-offer-status.enum';
 import { VariantSnapshotModel } from './variant-snapshot.model';
 
 @Index(['storeProductUuid', 'variantUuid'], { unique: true })
-@Entity('store_variant_offer')
-export class StoreVariantOfferModel {
+@Entity('store_offer')
+export class StoreOfferModel {
   @PrimaryColumn('uuid', { name: 'uuid', default: () => 'gen_random_uuid()' })
   uuid: string;
 
@@ -18,7 +18,13 @@ export class StoreVariantOfferModel {
   @Column({ name: 'store_product_uuid', type: 'uuid' })
   storeProductUuid: string;
 
-  @JoinColumn({ name: 'store_product_uuid' })
+  @Column({ name: 'product_uuid', type: 'uuid' })
+  productUuid: string;
+
+  @JoinColumn([
+    { name: 'store_product_uuid', referencedColumnName: 'uuid' },
+    { name: 'product_uuid', referencedColumnName: 'productUuid' },
+  ])
   @ManyToOne(() => StoreProductModel, (storeProduct) => storeProduct.offers, { onDelete: 'CASCADE' })
   storeProduct: StoreProductModel;
 
@@ -26,7 +32,10 @@ export class StoreVariantOfferModel {
   @Column({ name: 'variant_uuid', type: 'uuid' })
   variantUuid: string;
 
-  @JoinColumn({ name: 'variant_uuid' })
+  @JoinColumn([
+    { name: 'product_uuid', referencedColumnName: 'productUuid' },
+    { name: 'variant_uuid', referencedColumnName: 'variantUuid' },
+  ])
   @ManyToOne(() => VariantSnapshotModel, { onDelete: 'RESTRICT' })
   variantSnapshot: VariantSnapshotModel;
 
@@ -42,8 +51,8 @@ export class StoreVariantOfferModel {
   @Column({ name: 'description_override', type: 'text', nullable: true })
   descriptionOverride?: string | null;
 
-  @Column({ name: 'status', type: 'enum', enum: StoreProductStatus, default: StoreProductStatus.ACTIVE })
-  status: StoreProductStatus;
+  @Column({ name: 'status', type: 'enum', enum: StoreOfferStatus, default: StoreOfferStatus.ACTIVE })
+  status: StoreOfferStatus;
 
   @Column({ name: 'showing', type: 'boolean', default: true })
   showing: boolean;

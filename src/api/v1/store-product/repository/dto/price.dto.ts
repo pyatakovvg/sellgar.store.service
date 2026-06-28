@@ -1,10 +1,11 @@
 import { Expose } from 'class-transformer';
-import { IsNumber, IsString } from 'class-validator';
+import { IsString, Matches } from 'class-validator';
 
 export class PriceDto {
   @Expose()
-  @IsNumber()
-  value: number;
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
+  value: string;
 
   @Expose()
   @IsString()

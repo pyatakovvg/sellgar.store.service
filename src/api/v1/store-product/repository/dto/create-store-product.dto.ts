@@ -1,7 +1,7 @@
 import { Type, Expose } from 'class-transformer';
 import { IsBoolean, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
 
-import { OfferDto } from './offer.dto';
+import { StoreOfferDto } from './store-offer.dto';
 
 export class CreateStoreProductDto {
   @Expose()
@@ -36,6 +36,6 @@ export class CreateStoreProductDto {
 
   @Expose()
   @ValidateNested()
-  @Type(() => OfferDto)
-  offers: OfferDto[];
+  @Type(() => StoreOfferDto)
+  offers: StoreOfferDto[];
 }

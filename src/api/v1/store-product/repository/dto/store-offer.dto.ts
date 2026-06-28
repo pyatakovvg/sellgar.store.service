@@ -3,7 +3,7 @@ import { IsBoolean, IsNumber, IsOptional, IsString, IsUUID, ValidateNested } fro
 
 import { PriceDto } from './price.dto';
 
-export class OfferDto {
+export class StoreOfferDto {
   @Expose()
   @IsOptional()
   @IsUUID()

@@ -10,7 +10,7 @@ import { plainToInstance } from 'class-transformer';
 import { CommandRequestModel } from '../command-request.model';
 import { ArchiveStoreProductDto } from './dto/archive-store-product.dto';
 import { CreateStoreProductDto } from './dto/create-store-product.dto';
-import { OfferDto } from './dto/offer.dto';
+import { StoreOfferDto } from './dto/store-offer.dto';
 import { UpdateStoreProductDto } from './dto/update-store-product.dto';
 
 import { InventoryModel } from '../inventory.model';
@@ -20,8 +20,9 @@ import { ProductSnapshotModel } from '../product-snapshot.model';
 import { ShopSnapshotModel } from '../shop-snapshot.model';
 import { StoreProductEntity } from '../store-product.entity';
 import { StoreProductModel } from '../store-product.model';
+import { StoreOfferModel } from '../store-offer.model';
+import { StoreOfferStatus } from '../store-offer-status.enum';
 import { StoreProductStatus } from '../store-product-status.enum';
-import { StoreVariantOfferModel } from '../store-variant-offer.model';
 import { VariantSnapshotModel } from '../variant-snapshot.model';
 
 @Injectable()
@@ -95,7 +96,7 @@ export class StoreProductRepository {
         showing: dto.showing,
       });
 
-      await this.syncOffers(runner.manager, storeProductUuid, dto.offers);
+      await this.syncOffers(runner.manager, storeProductUuid, dto.productUuid, dto.offers);
 
       const result = await this.findByUuidWithManager(runner.manager, storeProductUuid);
       const resultInstance = this.toEntity(result);
@@ -158,19 +159,19 @@ export class StoreProductRepository {
 
       await runner.manager
         .createQueryBuilder()
-        .update(StoreVariantOfferModel)
+        .update(StoreOfferModel)
         .set({
-          status: StoreProductStatus.ARCHIVED,
+          status: StoreOfferStatus.ARCHIVED,
           version: () => 'version + 1',
         })
         .where('storeProductUuid = :storeProductUuid', { storeProductUuid: dto.uuid })
-        .andWhere('status != :archivedStatus', { archivedStatus: StoreProductStatus.ARCHIVED })
+        .andWhere('status != :archivedStatus', { archivedStatus: StoreOfferStatus.ARCHIVED })
         .andWhere(existingOfferUuids.length > 0 ? 'uuid NOT IN (:...existingOfferUuids)' : '1=1', {
           existingOfferUuids,
         })
         .execute();
 
-      await this.syncOffers(runner.manager, dto.uuid, dto.offers);
+      await this.syncOffers(runner.manager, dto.uuid, dto.productUuid, dto.offers);
 
       const result = await this.findByUuidWithManager(runner.manager, dto.uuid);
       const resultInstance = this.toEntity(result);
@@ -223,10 +224,10 @@ export class StoreProductRepository {
       }
 
       await runner.manager.update(
-        StoreVariantOfferModel,
+        StoreOfferModel,
         { storeProductUuid: dto.uuid },
         {
-          status: StoreProductStatus.ARCHIVED,
+          status: StoreOfferStatus.ARCHIVED,
           version: () => 'version + 1',
         },
       );
@@ -298,16 +299,18 @@ export class StoreProductRepository {
       .getOneOrFail();
   }
 
-  private async syncOffers(manager: EntityManager, storeProductUuid: string, offers: OfferDto[]) {
+  private async syncOffers(manager: EntityManager, storeProductUuid: string, productUuid: string, offers: StoreOfferDto[]) {
     for (const offer of offers) {
       const offerUuid = offer.uuid ?? uuid.v4();
+      const priceValue = this.normalizePriceValue(offer.currentPrice.value);
 
       await manager.upsert(
-        StoreVariantOfferModel,
+        StoreOfferModel,
         [
           {
             uuid: offerUuid,
             storeProductUuid,
+            productUuid,
             variantUuid: offer.variantUuid,
             sku: offer.sku,
             article: offer.article,
@@ -328,12 +331,12 @@ export class StoreProductRepository {
 
       if (
         !currentPrice ||
-        currentPrice.value !== offer.currentPrice.value ||
+        currentPrice.value !== priceValue ||
         currentPrice.currencyCode !== offer.currentPrice.currencyCode
       ) {
         await manager.insert(PriceHistoryModel, {
           offerUuid,
-          value: offer.currentPrice.value,
+          value: priceValue,
           currencyCode: offer.currentPrice.currencyCode,
         });
       }
@@ -362,6 +365,12 @@ export class StoreProductRepository {
         });
       }
     }
+  }
+
+  private normalizePriceValue(value: string) {
+    const [integer, fraction = ''] = value.split('.');
+
+    return `${integer}.${fraction.padEnd(2, '0').slice(0, 2)}`;
   }
 
   private toEntity(entity: StoreProductModel) {

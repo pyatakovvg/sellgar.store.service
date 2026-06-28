@@ -1,6 +1,7 @@
 import { Column, Entity, Index, PrimaryColumn } from 'typeorm';
 
 @Entity('variant_snapshot')
+@Index(['productUuid', 'variantUuid'], { unique: true })
 export class VariantSnapshotModel {
   @PrimaryColumn('uuid', { name: 'variant_uuid' })
   variantUuid: string;

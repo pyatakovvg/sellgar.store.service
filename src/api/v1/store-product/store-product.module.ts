@@ -14,13 +14,13 @@ import { StoreProductModel } from './store-product.model';
 import { StoreProductRepository } from './repository/store-product.repository';
 import { SnapshotEventService } from './service/snapshot-event.service';
 import { StoreProductService } from './service/store-product.service';
-import { StoreVariantOfferModel } from './store-variant-offer.model';
+import { StoreOfferModel } from './store-offer.model';
 import { SyncIssueModel } from './sync-issue.model';
 import { VariantSnapshotModel } from './variant-snapshot.model';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([StoreProductModel, StoreVariantOfferModel, PriceHistoryModel, InventoryModel]),
+    TypeOrmModule.forFeature([StoreProductModel, StoreOfferModel, PriceHistoryModel, InventoryModel]),
     TypeOrmModule.forFeature([ShopSnapshotModel, ProductSnapshotModel, VariantSnapshotModel]),
     TypeOrmModule.forFeature([OutboxEventModel, InboxEventModel, SyncIssueModel, CommandRequestModel]),
   ],

@@ -1,8 +1,9 @@
 import { Column, CreateDateColumn, Entity, Index, OneToMany, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 
-import { StoreVariantOfferModel } from './store-variant-offer.model';
+import { StoreOfferModel } from './store-offer.model';
 import { StoreProductStatus } from './store-product-status.enum';
 
+@Index(['uuid', 'productUuid'], { unique: true })
 @Entity('store_product')
 export class StoreProductModel {
   @PrimaryColumn('uuid', { name: 'uuid', default: () => 'gen_random_uuid()' })
@@ -34,8 +35,8 @@ export class StoreProductModel {
   @Column({ name: 'showing', type: 'boolean', default: true })
   showing: boolean;
 
-  @OneToMany(() => StoreVariantOfferModel, (offer) => offer.storeProduct)
-  offers: StoreVariantOfferModel[];
+  @OneToMany(() => StoreOfferModel, (offer) => offer.storeProduct)
+  offers: StoreOfferModel[];
 
   @CreateDateColumn({
     name: 'created_at',

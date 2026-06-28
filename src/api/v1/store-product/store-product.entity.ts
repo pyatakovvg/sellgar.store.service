@@ -1,6 +1,7 @@
 import { Type, Expose } from 'class-transformer';
 import { IsUUID, IsDate, ValidateNested, IsNumber, IsString, IsBoolean, IsOptional, IsEnum } from 'class-validator';
 
+import { StoreOfferStatus } from './store-offer-status.enum';
 import { StoreProductStatus } from './store-product-status.enum';
 
 export class CurrencyEntity {
@@ -105,8 +106,8 @@ export class PriceHistoryEntity {
   offerUuid: string;
 
   @Expose()
-  @IsNumber()
-  value: number;
+  @IsString()
+  value: string;
 
   @Expose()
   @IsString()
@@ -162,7 +163,7 @@ export class InventoryEntity {
   updatedAt: Date;
 }
 
-export class StoreVariantOfferEntity {
+export class StoreOfferEntity {
   @Expose()
   @IsUUID()
   uuid: string;
@@ -174,6 +175,10 @@ export class StoreVariantOfferEntity {
   @Expose()
   @IsUUID()
   storeProductUuid: string;
+
+  @Expose()
+  @IsUUID()
+  productUuid: string;
 
   @Expose()
   @IsUUID()
@@ -206,8 +211,8 @@ export class StoreVariantOfferEntity {
   descriptionOverride?: string | null;
 
   @Expose()
-  @IsEnum(StoreProductStatus)
-  status: StoreProductStatus;
+  @IsEnum(StoreOfferStatus)
+  status: StoreOfferStatus;
 
   @Expose()
   @IsBoolean()
@@ -297,8 +302,8 @@ export class StoreProductEntity {
 
   @Expose()
   @ValidateNested()
-  @Type(() => StoreVariantOfferEntity)
-  offers: StoreVariantOfferEntity[];
+  @Type(() => StoreOfferEntity)
+  offers: StoreOfferEntity[];
 
   @Expose()
   @IsDate()

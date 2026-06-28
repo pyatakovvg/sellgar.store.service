@@ -1,7 +1,7 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 
 import { CurrencyModel } from '../currency/currency.model';
-import { StoreVariantOfferModel } from './store-variant-offer.model';
+import { StoreOfferModel } from './store-offer.model';
 
 @Entity('price_history')
 export class PriceHistoryModel {
@@ -12,11 +12,11 @@ export class PriceHistoryModel {
   offerUuid: string;
 
   @JoinColumn({ name: 'offer_uuid' })
-  @ManyToOne(() => StoreVariantOfferModel, (offer) => offer.prices, { onDelete: 'CASCADE' })
-  offer: StoreVariantOfferModel;
+  @ManyToOne(() => StoreOfferModel, (offer) => offer.prices, { onDelete: 'CASCADE' })
+  offer: StoreOfferModel;
 
-  @Column({ name: 'value', type: 'double precision', default: 0 })
-  value: number;
+  @Column({ name: 'value', type: 'numeric', precision: 12, scale: 2, default: '0.00' })
+  value: string;
 
   @Column({ name: 'currency_code', type: 'varchar', length: 3 })
   currencyCode: string;

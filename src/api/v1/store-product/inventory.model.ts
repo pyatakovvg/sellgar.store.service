@@ -1,6 +1,6 @@
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 
-import { StoreVariantOfferModel } from './store-variant-offer.model';
+import { StoreOfferModel } from './store-offer.model';
 
 @Entity('inventory')
 export class InventoryModel {
@@ -11,8 +11,8 @@ export class InventoryModel {
   offerUuid: string;
 
   @JoinColumn({ name: 'offer_uuid' })
-  @ManyToOne(() => StoreVariantOfferModel, (offer) => offer.inventory, { onDelete: 'CASCADE' })
-  offer: StoreVariantOfferModel;
+  @ManyToOne(() => StoreOfferModel, (offer) => offer.inventory, { onDelete: 'CASCADE' })
+  offer: StoreOfferModel;
 
   @Column({ name: 'quantity', type: 'int', default: 0 })
   quantity: number;
