@@ -12,8 +12,18 @@
 
 - Не переносить legacy `store` из product service один-в-один.
 - Не добавлять cart/order lifecycle в этот сервис.
-- Не хранить catalog product data как источник истины; хранить ссылки и при необходимости read snapshots для внешних сценариев.
-- Перед добавлением таблиц сначала зафиксировать целевую модель `store_product`, `store_variant`, price history, inventory balance/reservation.
+- Не хранить catalog product data как источник истины; хранить external UUID и
+  минимальные snapshots для локальной проверки и read-model.
+- `product_snapshot`, `variant_snapshot` и `shop_snapshot` должны оставаться
+  минимальными: UUID, `source_version`, имя, статус и технические timestamps.
+- Полную модель товара/варианта/магазина собирает gateway/BFF через сервисы
+  владельцы, а не `store_srv`.
+- Currency является общей бизнес-сущностью и называется `currency`, без
+  `shopCurrency`, `variantCurrency` или других переименований.
+- Перед расширением таблиц сверять целевую модель `store_product`,
+  `store_variant_offer`, `price_history`, `inventory`, `reservation`.
+- Внешние события применять через idempotent `inbox_event`; при `version_gap`
+  или `missing_parent` писать `sync_issue`, а не применять событие вслепую.
 
 ## Проверка
 
