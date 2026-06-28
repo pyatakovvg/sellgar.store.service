@@ -238,22 +238,7 @@ export class StoreOfferEntity {
   @Expose()
   @IsOptional()
   @IsString()
-  sku?: string | null;
-
-  @Expose()
-  @IsOptional()
-  @IsString()
   article?: string | null;
-
-  @Expose()
-  @IsOptional()
-  @IsString()
-  titleOverride?: string | null;
-
-  @Expose()
-  @IsOptional()
-  @IsString()
-  descriptionOverride?: string | null;
 
   @Expose()
   @IsEnum(StoreOfferStatus)
@@ -327,16 +312,6 @@ export class StoreProductEntity {
   @Expose()
   @IsString()
   article: string;
-
-  @Expose()
-  @IsOptional()
-  @IsString()
-  titleOverride?: string | null;
-
-  @Expose()
-  @IsOptional()
-  @IsString()
-  descriptionOverride?: string | null;
 
   @Expose()
   @IsEnum(StoreProductStatus)

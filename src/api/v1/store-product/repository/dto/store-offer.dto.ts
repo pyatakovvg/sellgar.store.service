@@ -16,22 +16,7 @@ export class StoreOfferDto {
   @Expose()
   @IsOptional()
   @IsString()
-  sku?: string | null;
-
-  @Expose()
-  @IsOptional()
-  @IsString()
   article?: string | null;
-
-  @Expose()
-  @IsOptional()
-  @IsString()
-  titleOverride?: string | null;
-
-  @Expose()
-  @IsOptional()
-  @IsString()
-  descriptionOverride?: string | null;
 
   @Expose()
   @ValidateNested()

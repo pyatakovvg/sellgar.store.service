@@ -51,17 +51,8 @@ export class StoreOfferModel {
   @ManyToOne(() => VariantSnapshotModel, { onDelete: 'RESTRICT' })
   variantSnapshot: VariantSnapshotModel;
 
-  @Column({ name: 'sku', type: 'varchar', length: 256, nullable: true })
-  sku?: string | null;
-
   @Column({ name: 'article', type: 'varchar', length: 256, nullable: true })
   article?: string | null;
-
-  @Column({ name: 'title_override', type: 'varchar', length: 512, nullable: true })
-  titleOverride?: string | null;
-
-  @Column({ name: 'description_override', type: 'text', nullable: true })
-  descriptionOverride?: string | null;
 
   @Column({ name: 'status', type: 'enum', enum: StoreOfferStatus, default: StoreOfferStatus.ACTIVE })
   status: StoreOfferStatus;

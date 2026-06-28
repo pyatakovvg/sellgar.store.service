@@ -1,5 +1,5 @@
 import { Type, Expose } from 'class-transformer';
-import { IsBoolean, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
+import { IsBoolean, IsString, IsUUID, ValidateNested } from 'class-validator';
 
 import { StoreOfferDto } from './store-offer.dto';
 
@@ -19,16 +19,6 @@ export class CreateStoreProductDto {
   @Expose()
   @IsString()
   article: string;
-
-  @Expose()
-  @IsOptional()
-  @IsString()
-  titleOverride?: string | null;
-
-  @Expose()
-  @IsOptional()
-  @IsString()
-  descriptionOverride?: string | null;
 
   @Expose()
   @IsBoolean()

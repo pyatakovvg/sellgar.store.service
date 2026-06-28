@@ -23,12 +23,6 @@ export class StoreProductModel {
   @Column({ name: 'article', type: 'varchar', length: 256 })
   article: string;
 
-  @Column({ name: 'title_override', type: 'varchar', length: 512, nullable: true })
-  titleOverride?: string | null;
-
-  @Column({ name: 'description_override', type: 'text', nullable: true })
-  descriptionOverride?: string | null;
-
   @Column({ name: 'status', type: 'enum', enum: StoreProductStatus, default: StoreProductStatus.ACTIVE })
   status: StoreProductStatus;
 

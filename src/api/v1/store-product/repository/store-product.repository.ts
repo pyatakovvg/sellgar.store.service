@@ -45,9 +45,7 @@ export class StoreProductRepository {
     if (query?.search) {
       builder.andWhere(
         `storeProduct.article ILIKE :search OR ` +
-          `storeProduct.titleOverride ILIKE :search OR ` +
-          `offers.article ILIKE :search OR ` +
-          `offers.sku ILIKE :search`,
+          `offers.article ILIKE :search`,
         { search: `%${decodeURI(query.search)}%` },
       );
     }
@@ -97,8 +95,6 @@ export class StoreProductRepository {
         shopUuid: dto.shopUuid,
         productUuid: dto.productUuid,
         article: dto.article,
-        titleOverride: dto.titleOverride,
-        descriptionOverride: dto.descriptionOverride,
         showing: dto.showing,
       });
 
@@ -150,8 +146,6 @@ export class StoreProductRepository {
           shopUuid: dto.shopUuid,
           productUuid: dto.productUuid,
           article: dto.article,
-          titleOverride: dto.titleOverride,
-          descriptionOverride: dto.descriptionOverride,
           showing: dto.showing,
           version: () => 'version + 1',
         },
@@ -352,10 +346,7 @@ export class StoreProductRepository {
             storeProductUuid,
             productUuid,
             variantUuid: offer.variantUuid,
-            sku: offer.sku,
             article: offer.article,
-            titleOverride: offer.titleOverride,
-            descriptionOverride: offer.descriptionOverride,
             showing: offer.showing,
             version: offer.uuid ? () => 'version + 1' : 1,
           },
