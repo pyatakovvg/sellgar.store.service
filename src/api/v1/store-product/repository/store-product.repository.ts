@@ -269,12 +269,7 @@ export class StoreProductRepository {
         'productSnapshot.productUuid = storeProduct.productUuid',
       )
       .leftJoinAndSelect('storeProduct.offers', 'offers')
-      .leftJoinAndMapOne(
-        'offers.variantSnapshot',
-        VariantSnapshotModel,
-        'variantSnapshot',
-        'variantSnapshot.variantUuid = offers.variantUuid',
-      )
+      .leftJoinAndSelect('offers.variantSnapshot', 'variantSnapshot')
       .leftJoinAndSelect('offers.prices', 'prices')
       .leftJoinAndSelect('prices.currency', 'currency')
       .leftJoinAndMapOne(
@@ -333,7 +328,7 @@ export class StoreProductRepository {
 
       if (
         !currentPrice ||
-        Number(currentPrice.value) !== Number(offer.currentPrice.value) ||
+        currentPrice.value !== offer.currentPrice.value ||
         currentPrice.currencyCode !== offer.currentPrice.currencyCode
       ) {
         await manager.insert(PriceHistoryModel, {

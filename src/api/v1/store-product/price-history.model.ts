@@ -15,7 +15,7 @@ export class PriceHistoryModel {
   @ManyToOne(() => StoreVariantOfferModel, (offer) => offer.prices, { onDelete: 'CASCADE' })
   offer: StoreVariantOfferModel;
 
-  @Column({ name: 'value', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({ name: 'value', type: 'double precision', default: 0 })
   value: number;
 
   @Column({ name: 'currency_code', type: 'varchar', length: 3 })

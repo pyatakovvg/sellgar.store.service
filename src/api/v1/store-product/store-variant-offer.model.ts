@@ -4,7 +4,9 @@ import { InventoryModel } from './inventory.model';
 import { PriceHistoryModel } from './price-history.model';
 import { StoreProductModel } from './store-product.model';
 import { StoreProductStatus } from './store-product-status.enum';
+import { VariantSnapshotModel } from './variant-snapshot.model';
 
+@Index(['storeProductUuid', 'variantUuid'], { unique: true })
 @Entity('store_variant_offer')
 export class StoreVariantOfferModel {
   @PrimaryColumn('uuid', { name: 'uuid', default: () => 'gen_random_uuid()' })
@@ -23,6 +25,10 @@ export class StoreVariantOfferModel {
   @Index()
   @Column({ name: 'variant_uuid', type: 'uuid' })
   variantUuid: string;
+
+  @JoinColumn({ name: 'variant_uuid' })
+  @ManyToOne(() => VariantSnapshotModel, { onDelete: 'RESTRICT' })
+  variantSnapshot: VariantSnapshotModel;
 
   @Column({ name: 'sku', type: 'varchar', length: 256, nullable: true })
   sku?: string | null;
