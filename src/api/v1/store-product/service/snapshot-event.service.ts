@@ -192,10 +192,20 @@ export class SnapshotEventService {
   }
 
   private statusPayload(event: IntegrationEventDto) {
-    if (event.eventType.endsWith('.archived') || event.eventType.endsWith('.disabled') || event.eventType.endsWith('.deleted')) {
+    const status = this.optionalStringPayload(event, 'status');
+
+    if (status) {
+      return status;
+    }
+
+    if (event.eventType.endsWith('.disabled')) {
+      return 'disabled';
+    }
+
+    if (event.eventType.endsWith('.archived') || event.eventType.endsWith('.deleted')) {
       return 'archived';
     }
 
-    return this.stringPayload(event, 'status') || 'active';
+    return 'active';
   }
 }

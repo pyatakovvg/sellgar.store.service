@@ -20,6 +20,9 @@
   владельцы, а не `store_srv`.
 - Currency является общей бизнес-сущностью и называется `currency`, без
   `shopCurrency`, `variantCurrency` или других переименований.
+- Snapshot consumer должен применять `payload.status` как источник истины. Имя события
+  (`*.deleted`, `*.disabled`, `*.archived`) можно использовать только как fallback для старых
+  сообщений без явного `status`.
 - Перед расширением таблиц сверять целевую модель `store_product`,
   `store_variant_offer`, `price_history`, `inventory`, `reservation`.
 - Внешние события применять через idempotent `inbox_event`; при `version_gap`
