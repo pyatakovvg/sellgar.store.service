@@ -1,9 +1,9 @@
-import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import { Column, Entity, JoinColumn, OneToOne, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 
 import { StoreOfferModel } from './store-offer.model';
 
-@Entity('inventory')
-export class InventoryModel {
+@Entity('offer_inventory')
+export class OfferInventoryModel {
   @PrimaryColumn('uuid', { name: 'uuid', default: () => 'gen_random_uuid()' })
   uuid: string;
 
@@ -11,7 +11,7 @@ export class InventoryModel {
   offerUuid: string;
 
   @JoinColumn({ name: 'offer_uuid' })
-  @ManyToOne(() => StoreOfferModel, (offer) => offer.inventory, { onDelete: 'CASCADE' })
+  @OneToOne(() => StoreOfferModel, (offer) => offer.inventory, { onDelete: 'CASCADE' })
   offer: StoreOfferModel;
 
   @Column({ name: 'quantity', type: 'int', default: 0 })

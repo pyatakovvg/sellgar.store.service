@@ -3,7 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { CommandRequestModel } from './command-request.model';
 import { InboxEventModel } from './inbox-event.model';
-import { InventoryModel } from './inventory.model';
+import { InventoryMovementModel } from './inventory-movement.model';
+import { OfferInventoryModel } from './offer-inventory.model';
 import { OutboxEventModel } from './outbox-event.model';
 import { PriceHistoryModel } from './price-history.model';
 import { ProductSnapshotModel } from './product-snapshot.model';
@@ -20,7 +21,7 @@ import { VariantSnapshotModel } from './variant-snapshot.model';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([StoreProductModel, StoreOfferModel, PriceHistoryModel, InventoryModel]),
+    TypeOrmModule.forFeature([StoreProductModel, StoreOfferModel, PriceHistoryModel, OfferInventoryModel, InventoryMovementModel]),
     TypeOrmModule.forFeature([ShopSnapshotModel, ProductSnapshotModel, VariantSnapshotModel]),
     TypeOrmModule.forFeature([OutboxEventModel, InboxEventModel, SyncIssueModel, CommandRequestModel]),
   ],

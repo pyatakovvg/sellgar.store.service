@@ -9,11 +9,17 @@ import { plainToInstance } from 'class-transformer';
 
 import { CommandRequestModel } from '../command-request.model';
 import { ArchiveStoreProductDto } from './dto/archive-store-product.dto';
+import { AdjustOfferInventoryDto } from './dto/adjust-offer-inventory.dto';
 import { CreateStoreProductDto } from './dto/create-store-product.dto';
+import { ReceiptOfferInventoryDto } from './dto/receipt-offer-inventory.dto';
 import { StoreOfferDto } from './dto/store-offer.dto';
 import { UpdateStoreProductDto } from './dto/update-store-product.dto';
+import { WriteOffOfferInventoryDto } from './dto/write-off-offer-inventory.dto';
 
-import { InventoryModel } from '../inventory.model';
+import { InventoryMovementModel } from '../inventory-movement.model';
+import { InventoryMovementSourceType } from '../inventory-movement-source-type.enum';
+import { InventoryMovementType } from '../inventory-movement-type.enum';
+import { OfferInventoryModel } from '../offer-inventory.model';
 import { OutboxEventModel } from '../outbox-event.model';
 import { PriceHistoryModel } from '../price-history.model';
 import { ProductSnapshotModel } from '../product-snapshot.model';
@@ -254,6 +260,47 @@ export class StoreProductRepository {
     }
   }
 
+  receiptInventory(dto: ReceiptOfferInventoryDto) {
+    return this.applyInventoryMovement({
+      dto,
+      commandType: 'store.inventory.receipt',
+      movementType: InventoryMovementType.RECEIPT,
+      sourceType: InventoryMovementSourceType.MANUAL,
+      quantityDelta: dto.quantity,
+      reservedDelta: 0,
+    });
+  }
+
+  writeOffInventory(dto: WriteOffOfferInventoryDto) {
+    return this.applyInventoryMovement({
+      dto,
+      commandType: 'store.inventory.writeOff',
+      movementType: InventoryMovementType.WRITE_OFF,
+      sourceType: InventoryMovementSourceType.MANUAL,
+      quantityDelta: -dto.quantity,
+      reservedDelta: 0,
+    });
+  }
+
+  async adjustInventory(dto: AdjustOfferInventoryDto) {
+    const offerInventory = await this.dataSource.manager.findOne(OfferInventoryModel, {
+      where: { offerUuid: dto.offerUuid },
+    });
+
+    if (!offerInventory) {
+      throw new BadRequestException('Offer inventory is missing');
+    }
+
+    return this.applyInventoryMovement({
+      dto,
+      commandType: 'store.inventory.adjust',
+      movementType: InventoryMovementType.ADJUSTMENT,
+      sourceType: InventoryMovementSourceType.CORRECTION,
+      quantityDelta: dto.quantity - offerInventory.quantity,
+      reservedDelta: 0,
+    });
+  }
+
   private buildStoreProductQuery(manager: EntityManager = this.dataSource.manager) {
     return manager
       .createQueryBuilder(StoreProductModel, 'storeProduct')
@@ -282,13 +329,6 @@ export class StoreProductRepository {
       )
       .leftJoinAndSelect('current_price.currency', 'current_price_currency')
       .leftJoinAndSelect('offers.inventory', 'inventory')
-      .leftJoinAndMapOne(
-        'offers.currentInventory',
-        InventoryModel,
-        'current_inventory',
-        'current_inventory.offerUuid = offers.uuid AND current_inventory.uuid = ' +
-          '(SELECT inventory.uuid FROM inventory inventory WHERE inventory.offer_uuid = offers.uuid ORDER BY inventory.updated_at DESC LIMIT 1)',
-      )
       .addOrderBy('offers.createdAt', 'ASC')
       .addOrderBy('prices.createdAt', 'DESC');
   }
@@ -341,29 +381,93 @@ export class StoreProductRepository {
         });
       }
 
-      const currentInventory = await manager
-        .createQueryBuilder(InventoryModel, 'inventory')
-        .where('inventory.offerUuid = :offerUuid', { offerUuid })
-        .orderBy('inventory.updatedAt', 'DESC')
-        .getOne();
+      const inventoryExists = await manager.existsBy(OfferInventoryModel, { offerUuid });
 
-      if (currentInventory) {
-        await manager.update(
-          InventoryModel,
-          { uuid: currentInventory.uuid },
-          {
-            quantity: offer.quantity,
-            reserved: offer.reserved ?? currentInventory.reserved,
-            version: () => 'version + 1',
-          },
-        );
-      } else {
-        await manager.insert(InventoryModel, {
+      if (!inventoryExists) {
+        await manager.insert(OfferInventoryModel, {
           offerUuid,
-          quantity: offer.quantity,
-          reserved: offer.reserved ?? 0,
+          quantity: 0,
+          reserved: 0,
         });
       }
+    }
+  }
+
+  private async applyInventoryMovement(params: {
+    dto: ReceiptOfferInventoryDto | WriteOffOfferInventoryDto | AdjustOfferInventoryDto;
+    commandType: string;
+    movementType: InventoryMovementType;
+    sourceType: InventoryMovementSourceType;
+    quantityDelta: number;
+    reservedDelta: number;
+  }) {
+    const runner = this.dataSource.createQueryRunner();
+    const requestHash = this.commandHash(params.dto);
+
+    await runner.connect();
+    await runner.startTransaction();
+
+    try {
+      const commandResult = await this.findCompletedInventoryCommand(runner.manager, params.dto.commandId, requestHash);
+
+      if (commandResult) {
+        await runner.commitTransaction();
+        return commandResult;
+      }
+
+      const inventory = await runner.manager.findOne(OfferInventoryModel, {
+        where: { offerUuid: params.dto.offerUuid },
+      });
+
+      if (!inventory) {
+        throw new BadRequestException('Offer inventory is missing');
+      }
+
+      const quantity = inventory.quantity + params.quantityDelta;
+      const reserved = inventory.reserved + params.reservedDelta;
+
+      if (quantity < 0 || reserved < 0 || reserved > quantity) {
+        throw new BadRequestException('Inventory movement creates invalid stock state');
+      }
+
+      const updateResult = await runner.manager.update(
+        OfferInventoryModel,
+        { uuid: inventory.uuid, version: params.dto.expectedVersion },
+        {
+          quantity,
+          reserved,
+          version: () => 'version + 1',
+        },
+      );
+
+      if (updateResult.affected !== 1) {
+        throw new ConflictException('Offer inventory version conflict');
+      }
+
+      await runner.manager.insert(InventoryMovementModel, {
+        offerUuid: params.dto.offerUuid,
+        type: params.movementType,
+        quantityDelta: params.quantityDelta,
+        reservedDelta: params.reservedDelta,
+        sourceType: params.sourceType,
+        sourceUuid: params.dto.sourceUuid,
+        reason: params.dto.reason,
+        createdBy: params.dto.createdBy,
+      });
+
+      const result = await runner.manager.findOneOrFail(OfferInventoryModel, {
+        where: { uuid: inventory.uuid },
+      });
+
+      await this.insertInventoryCommand(runner.manager, params.dto.commandId, params.commandType, requestHash, result);
+      await runner.commitTransaction();
+
+      return result;
+    } catch (error) {
+      await runner.rollbackTransaction();
+      throw error;
+    } finally {
+      await runner.release();
     }
   }
 
@@ -429,12 +533,48 @@ export class StoreProductRepository {
     return resultInstance;
   }
 
+  private async findCompletedInventoryCommand(manager: EntityManager, commandId: string, requestHash: string) {
+    const command = await manager.findOne(CommandRequestModel, { where: { commandId } });
+
+    if (!command) {
+      return null;
+    }
+
+    if (command.requestHash !== requestHash) {
+      throw new ConflictException('Command id was already used with different payload');
+    }
+
+    if (command.status !== 'completed' || !command.result) {
+      throw new ConflictException('Command is not completed');
+    }
+
+    const resultInstance = plainToInstance(OfferInventoryModel, command.result);
+
+    return resultInstance;
+  }
+
   private insertCommand(
     manager: EntityManager,
     commandId: string,
     commandType: string,
     requestHash: string,
     result: StoreProductEntity,
+  ) {
+    return manager.insert(CommandRequestModel, {
+      commandId,
+      commandType,
+      requestHash,
+      status: 'completed',
+      result: result as unknown as Record<string, unknown>,
+    });
+  }
+
+  private insertInventoryCommand(
+    manager: EntityManager,
+    commandId: string,
+    commandType: string,
+    requestHash: string,
+    result: OfferInventoryModel,
   ) {
     return manager.insert(CommandRequestModel, {
       commandId,
@@ -468,7 +608,15 @@ export class StoreProductRepository {
     });
   }
 
-  private commandHash(dto: CreateStoreProductDto | UpdateStoreProductDto | ArchiveStoreProductDto) {
+  private commandHash(
+    dto:
+      | CreateStoreProductDto
+      | UpdateStoreProductDto
+      | ArchiveStoreProductDto
+      | ReceiptOfferInventoryDto
+      | WriteOffOfferInventoryDto
+      | AdjustOfferInventoryDto,
+  ) {
     return createHash('sha256').update(JSON.stringify(this.sortKeys(dto))).digest('hex');
   }
 

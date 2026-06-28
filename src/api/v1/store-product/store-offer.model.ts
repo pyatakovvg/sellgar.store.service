@@ -1,6 +1,18 @@
-import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, OneToMany, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+  OneToOne,
+  PrimaryColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
-import { InventoryModel } from './inventory.model';
+import { InventoryMovementModel } from './inventory-movement.model';
+import { OfferInventoryModel } from './offer-inventory.model';
 import { PriceHistoryModel } from './price-history.model';
 import { StoreProductModel } from './store-product.model';
 import { StoreOfferStatus } from './store-offer-status.enum';
@@ -60,8 +72,11 @@ export class StoreOfferModel {
   @OneToMany(() => PriceHistoryModel, (price) => price.offer)
   prices: PriceHistoryModel[];
 
-  @OneToMany(() => InventoryModel, (inventory) => inventory.offer)
-  inventory: InventoryModel[];
+  @OneToOne(() => OfferInventoryModel, (inventory) => inventory.offer)
+  inventory?: OfferInventoryModel | null;
+
+  @OneToMany(() => InventoryMovementModel, (movement) => movement.offer)
+  inventoryMovements: InventoryMovementModel[];
 
   @CreateDateColumn({
     name: 'created_at',
