@@ -338,21 +338,34 @@ export class StoreProductRepository {
       const offerUuid = offer.uuid ?? uuid.v4();
       const priceValue = this.normalizePriceValue(offer.currentPrice.value);
 
-      await manager.upsert(
-        StoreOfferModel,
-        [
+      if (offer.uuid) {
+        const updateResult = await manager.update(
+          StoreOfferModel,
+          { uuid: offer.uuid },
           {
-            uuid: offerUuid,
             storeProductUuid,
             productUuid,
             variantUuid: offer.variantUuid,
             article: offer.article,
+            status: StoreOfferStatus.ACTIVE,
             showing: offer.showing,
-            version: offer.uuid ? () => 'version + 1' : 1,
+            version: () => 'version + 1',
           },
-        ],
-        ['uuid'],
-      );
+        );
+
+        if (updateResult.affected !== 1) {
+          throw new ConflictException('Store offer version conflict');
+        }
+      } else {
+        await manager.insert(StoreOfferModel, {
+          uuid: offerUuid,
+          storeProductUuid,
+          productUuid,
+          variantUuid: offer.variantUuid,
+          article: offer.article,
+          showing: offer.showing,
+        });
+      }
 
       const currentPrice = await manager
         .createQueryBuilder(PriceHistoryModel, 'price')
