@@ -24,7 +24,7 @@ import { OutboxEventModel } from '../outbox-event.model';
 import { PriceHistoryModel } from '../price-history.model';
 import { ProductSnapshotModel } from '../product-snapshot.model';
 import { ShopSnapshotModel } from '../shop-snapshot.model';
-import { StoreProductEntity } from '../store-product.entity';
+import { StorefrontOfferDetailEntity, StorefrontOfferEntity, StoreProductEntity } from '../store-product.entity';
 import { StoreProductModel } from '../store-product.model';
 import { StoreOfferModel } from '../store-offer.model';
 import { StoreOfferStatus } from '../store-offer-status.enum';
@@ -65,6 +65,43 @@ export class StoreProductRepository {
       .getOneOrFail();
 
     const resultInstance = this.toEntity(result);
+
+    await validateOrReject(resultInstance);
+
+    return resultInstance;
+  }
+
+  async findOffersAllAndCount() {
+    const result = await this.buildStoreOfferQuery()
+      .where('offer.status = :offerStatus', { offerStatus: StoreOfferStatus.ACTIVE })
+      .andWhere('offer.showing = true')
+      .andWhere('storeProduct.status = :storeProductStatus', { storeProductStatus: StoreProductStatus.ACTIVE })
+      .andWhere('storeProduct.showing = true')
+      .orderBy('offer.createdAt', 'DESC')
+      .getManyAndCount();
+    const resultInstance = result[0].map((offer) => this.toStorefrontOfferEntity(offer));
+
+    await Promise.all(resultInstance.map((entity) => validateOrReject(entity)));
+
+    return { data: resultInstance, count: result[1] };
+  }
+
+  async findOfferByUuid(uuid: string) {
+    const offer = await this.buildPublicStoreOfferQuery()
+      .andWhere('offer.uuid = :uuid', { uuid })
+      .getOneOrFail();
+    const siblingOffers = await this.buildPublicStoreOfferQuery()
+      .andWhere('offer.storeProductUuid = :storeProductUuid', { storeProductUuid: offer.storeProductUuid })
+      .orderBy('offer.createdAt', 'ASC')
+      .getMany();
+    const resultInstance = plainToInstance(
+      StorefrontOfferDetailEntity,
+      {
+        offer: this.toStorefrontOfferEntity(offer),
+        siblingOffers: siblingOffers.map((siblingOffer) => this.toStorefrontOfferEntity(siblingOffer)),
+      },
+      { strategy: 'excludeAll' },
+    );
 
     await validateOrReject(resultInstance);
 
@@ -327,6 +364,38 @@ export class StoreProductRepository {
       .addOrderBy('prices.createdAt', 'DESC');
   }
 
+  private buildStoreOfferQuery(manager: EntityManager = this.dataSource.manager) {
+    return manager
+      .createQueryBuilder(StoreOfferModel, 'offer')
+      .innerJoinAndSelect('offer.storeProduct', 'storeProduct')
+      .leftJoinAndMapOne(
+        'offer.productSnapshot',
+        ProductSnapshotModel,
+        'productSnapshot',
+        'productSnapshot.productUuid = offer.productUuid',
+      )
+      .leftJoinAndSelect('offer.variantSnapshot', 'variantSnapshot')
+      .leftJoinAndMapOne(
+        'offer.currentPrice',
+        PriceHistoryModel,
+        'current_price',
+        'current_price.offerUuid = offer.uuid AND current_price.uuid = ' +
+          '(SELECT price.uuid FROM price_history price WHERE price.offer_uuid = offer.uuid ORDER BY price.created_at DESC LIMIT 1)',
+      )
+      .leftJoinAndSelect('current_price.currency', 'current_price_currency')
+      .leftJoinAndSelect('offer.inventory', 'inventory');
+  }
+
+  private buildPublicStoreOfferQuery(manager: EntityManager = this.dataSource.manager) {
+    return this.buildStoreOfferQuery(manager)
+      .where('offer.status = :offerStatus', { offerStatus: StoreOfferStatus.ACTIVE })
+      .andWhere('offer.showing = true')
+      .andWhere('storeProduct.status = :storeProductStatus', { storeProductStatus: StoreProductStatus.ACTIVE })
+      .andWhere('storeProduct.showing = true')
+      .andWhere('productSnapshot.status = :snapshotStatus', { snapshotStatus: 'active' })
+      .andWhere('variantSnapshot.status = :snapshotStatus', { snapshotStatus: 'active' });
+  }
+
   private findByUuidWithManager(manager: EntityManager, storeProductUuid: string) {
     return this.buildStoreProductQuery(manager)
       .where('storeProduct.uuid = :uuid', { uuid: storeProductUuid })
@@ -485,6 +554,18 @@ export class StoreProductRepository {
     return plainToInstance(StoreProductEntity, entity, {
       strategy: 'excludeAll',
     });
+  }
+
+  private toStorefrontOfferEntity(offer: StoreOfferModel): StorefrontOfferEntity {
+    return plainToInstance(
+      StorefrontOfferEntity,
+      {
+        ...offer,
+        shopUuid: offer.storeProduct.shopUuid,
+        storeProductArticle: offer.storeProduct.article,
+      },
+      { strategy: 'excludeAll' },
+    );
   }
 
   private async validateSnapshots(manager: EntityManager, dto: CreateStoreProductDto) {

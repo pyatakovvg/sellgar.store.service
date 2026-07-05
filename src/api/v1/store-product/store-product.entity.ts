@@ -232,6 +232,12 @@ export class StoreOfferEntity {
   @Expose()
   @IsOptional()
   @ValidateNested()
+  @Type(() => ProductSnapshotEntity)
+  productSnapshot?: ProductSnapshotEntity | null;
+
+  @Expose()
+  @IsOptional()
+  @ValidateNested()
   @Type(() => VariantSnapshotEntity)
   variantSnapshot?: VariantSnapshotEntity | null;
 
@@ -278,6 +284,93 @@ export class StoreOfferEntity {
   @Expose()
   @IsDate()
   updatedAt: Date;
+}
+
+export class StorefrontOfferEntity {
+  @Expose()
+  @IsUUID()
+  uuid: string;
+
+  @Expose()
+  @IsNumber()
+  version: number;
+
+  @Expose()
+  @IsUUID()
+  storeProductUuid: string;
+
+  @Expose()
+  @IsUUID()
+  shopUuid: string;
+
+  @Expose()
+  @IsUUID()
+  productUuid: string;
+
+  @Expose()
+  @IsUUID()
+  variantUuid: string;
+
+  @Expose()
+  @IsString()
+  storeProductArticle: string;
+
+  @Expose()
+  @IsOptional()
+  @IsString()
+  article?: string | null;
+
+  @Expose()
+  @IsEnum(StoreOfferStatus)
+  status: StoreOfferStatus;
+
+  @Expose()
+  @IsBoolean()
+  showing: boolean;
+
+  @Expose()
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ProductSnapshotEntity)
+  productSnapshot?: ProductSnapshotEntity | null;
+
+  @Expose()
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => VariantSnapshotEntity)
+  variantSnapshot?: VariantSnapshotEntity | null;
+
+  @Expose()
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PriceHistoryEntity)
+  currentPrice?: PriceHistoryEntity | null;
+
+  @Expose()
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => OfferInventoryEntity)
+  inventory?: OfferInventoryEntity | null;
+
+  @Expose()
+  @IsDate()
+  createdAt: Date;
+
+  @Expose()
+  @IsDate()
+  updatedAt: Date;
+}
+
+export class StorefrontOfferDetailEntity {
+  @Expose()
+  @ValidateNested()
+  @Type(() => StorefrontOfferEntity)
+  offer: StorefrontOfferEntity;
+
+  @Expose()
+  @ValidateNested({ each: true })
+  @Type(() => StorefrontOfferEntity)
+  siblingOffers: StorefrontOfferEntity[];
 }
 
 export class StoreProductEntity {
@@ -346,6 +439,18 @@ export class StoreProductResultEntity {
   @ValidateNested()
   @Type(() => StoreProductEntity)
   data: StoreProductEntity[];
+
+  @Expose()
+  @ValidateNested()
+  @Type(() => MetaEntity)
+  meta: MetaEntity;
+}
+
+export class StorefrontOfferResultEntity {
+  @Expose()
+  @ValidateNested({ each: true })
+  @Type(() => StorefrontOfferEntity)
+  data: StorefrontOfferEntity[];
 
   @Expose()
   @ValidateNested()

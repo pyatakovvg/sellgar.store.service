@@ -9,7 +9,7 @@ import { ReceiptOfferInventoryDto } from '../repository/dto/receipt-offer-invent
 import { UpdateStoreProductDto } from '../repository/dto/update-store-product.dto';
 import { WriteOffOfferInventoryDto } from '../repository/dto/write-off-offer-inventory.dto';
 import { StoreProductRepository } from '../repository/store-product.repository';
-import { StoreProductResultEntity } from '../store-product.entity';
+import { StorefrontOfferResultEntity, StoreProductResultEntity } from '../store-product.entity';
 
 @Injectable()
 export class StoreProductService {
@@ -36,6 +36,28 @@ export class StoreProductService {
 
   findByUuid(uuid: string) {
     return this.storeProductRepository.findByUuid(uuid);
+  }
+
+  async findOffersAll() {
+    const result = await this.storeProductRepository.findOffersAllAndCount().then(({ data, count }) => {
+      return {
+        data,
+        meta: {
+          totalRows: count,
+        },
+      };
+    });
+    const resultInstance = plainToInstance(StorefrontOfferResultEntity, result, {
+      strategy: 'excludeAll',
+    });
+
+    await validateOrReject(resultInstance);
+
+    return resultInstance;
+  }
+
+  findOfferByUuid(uuid: string) {
+    return this.storeProductRepository.findOfferByUuid(uuid);
   }
 
   create(dto: CreateStoreProductDto) {

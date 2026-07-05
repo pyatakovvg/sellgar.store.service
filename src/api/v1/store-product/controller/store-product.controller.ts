@@ -23,6 +23,16 @@ export class StoreProductController {
     return this.storeProductService.findByUuid(uuid);
   }
 
+  @MessagePattern({ cmd: 'store.offer.getAll' })
+  findOffersAll() {
+    return this.storeProductService.findOffersAll();
+  }
+
+  @MessagePattern({ cmd: 'store.offer.getByUuid' })
+  findOfferByUuid(@Payload('uuid') uuid: string) {
+    return this.storeProductService.findOfferByUuid(uuid);
+  }
+
   @MessagePattern({ cmd: 'store.product.create' })
   create(@Payload() dto: CreateStoreProductDto) {
     return this.storeProductService.create(dto);
