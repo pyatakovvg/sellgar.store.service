@@ -2,6 +2,7 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryColumn } from 'typeorm'
 
 @Entity('outbox_event')
 @Index(['aggregateType', 'aggregateUuid', 'aggregateVersion'], { unique: true })
+@Index(['status', 'nextAttemptAt', 'occurredAt'])
 export class OutboxEventModel {
   @PrimaryColumn('uuid', { name: 'uuid', default: () => 'gen_random_uuid()' })
   uuid: string;
@@ -32,6 +33,12 @@ export class OutboxEventModel {
 
   @Column({ name: 'published_at', type: 'timestamp', nullable: true })
   publishedAt?: Date | null;
+
+  @Column({ name: 'next_attempt_at', type: 'timestamp', nullable: true, default: () => 'CURRENT_TIMESTAMP' })
+  nextAttemptAt?: Date | null;
+
+  @Column({ name: 'processing_started_at', type: 'timestamp', nullable: true })
+  processingStartedAt?: Date | null;
 
   @Column({ name: 'status', type: 'varchar', length: 64, default: 'pending' })
   status: string;

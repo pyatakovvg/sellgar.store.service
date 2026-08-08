@@ -13,6 +13,8 @@ import { SnapshotEventController } from './controller/snapshot-event.controller'
 import { StoreProductController } from './controller/store-product.controller';
 import { StoreProductModel } from './store-product.model';
 import { StoreProductRepository } from './repository/store-product.repository';
+import { OutboxRepository } from './repository/outbox.repository';
+import { OutboxRelayService } from './service/outbox-relay.service';
 import { SnapshotEventService } from './service/snapshot-event.service';
 import { StoreProductService } from './service/store-product.service';
 import { StoreOfferModel } from './store-offer.model';
@@ -26,6 +28,6 @@ import { VariantSnapshotModel } from './variant-snapshot.model';
     TypeOrmModule.forFeature([OutboxEventModel, InboxEventModel, SyncIssueModel, CommandRequestModel]),
   ],
   controllers: [StoreProductController, SnapshotEventController],
-  providers: [StoreProductRepository, StoreProductService, SnapshotEventService],
+  providers: [StoreProductRepository, StoreProductService, SnapshotEventService, OutboxRepository, OutboxRelayService],
 })
 export class StoreProductModule {}
