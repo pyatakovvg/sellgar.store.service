@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
+import { plainToInstance } from 'class-transformer';
+import { validateOrReject } from 'class-validator';
 
 import { DataSource, EntityManager } from 'typeorm';
 
@@ -10,6 +12,7 @@ import { SyncIssueModel } from '../sync-issue.model';
 import { VariantSnapshotModel } from '../variant-snapshot.model';
 
 import { IntegrationEventDto } from './dto/integration-event.dto';
+import { ProductSnapshotPayloadDto } from './dto/product-snapshot-payload.dto';
 
 type EventApplyStatus = 'processed' | 'ignored' | 'parked';
 
@@ -31,8 +34,6 @@ export class SnapshotEventService {
         status = await this.applyShopEvent(manager, event);
       } else if (event.aggregateType === 'product') {
         status = await this.applyProductEvent(manager, event);
-      } else if (event.aggregateType === 'variant') {
-        status = await this.applyVariantEvent(manager, event);
       }
 
       await this.recordInboxEvent(manager, event, status, existing?.attempts ?? 0);
@@ -40,7 +41,7 @@ export class SnapshotEventService {
   }
 
   private async applyShopEvent(manager: EntityManager, event: IntegrationEventDto): Promise<EventApplyStatus> {
-    const current = await manager.findOne(ShopSnapshotModel, { where: { shopUuid: event.aggregateUuid } });
+    const current = await manager.findOne(ShopSnapshotModel, { where: { shopUuid: event.aggregateId } });
 
     const preflightStatus = await this.checkVersion(manager, event, current?.sourceVersion);
 
@@ -52,7 +53,7 @@ export class SnapshotEventService {
       ShopSnapshotModel,
       [
         {
-          shopUuid: event.aggregateUuid,
+          shopUuid: event.aggregateId,
           sourceVersion: event.aggregateVersion,
           name: this.stringPayload(event, 'name'),
           status: this.statusPayload(event),
@@ -66,7 +67,13 @@ export class SnapshotEventService {
   }
 
   private async applyProductEvent(manager: EntityManager, event: IntegrationEventDto): Promise<EventApplyStatus> {
-    const current = await manager.findOne(ProductSnapshotModel, { where: { productUuid: event.aggregateUuid } });
+    const payload = plainToInstance(ProductSnapshotPayloadDto, event.payload);
+    await validateOrReject(payload, { whitelist: true });
+    if (payload.uuid !== event.aggregateId || payload.version !== event.aggregateVersion) {
+      throw new Error('Product event envelope does not match its payload');
+    }
+
+    const current = await manager.findOne(ProductSnapshotModel, { where: { productUuid: event.aggregateId } });
 
     const preflightStatus = await this.checkVersion(manager, event, current?.sourceVersion);
 
@@ -78,50 +85,30 @@ export class SnapshotEventService {
       ProductSnapshotModel,
       [
         {
-          productUuid: event.aggregateUuid,
+          productUuid: event.aggregateId,
           sourceVersion: event.aggregateVersion,
-          name: this.stringPayload(event, 'name'),
-          status: this.statusPayload(event),
+          name: payload.name,
+          status: payload.status,
           syncedAt: new Date(),
         },
       ],
       ['productUuid'],
     );
 
-    return 'processed';
-  }
-
-  private async applyVariantEvent(manager: EntityManager, event: IntegrationEventDto): Promise<EventApplyStatus> {
-    const productUuid = this.stringPayload(event, 'productUuid');
-    const product = await manager.findOne(ProductSnapshotModel, { where: { productUuid } });
-
-    if (!product) {
-      await this.insertSyncIssue(manager, event, null, 'missing_parent');
-      return 'parked';
-    }
-
-    const current = await manager.findOne(VariantSnapshotModel, { where: { variantUuid: event.aggregateUuid } });
-
-    const preflightStatus = await this.checkVersion(manager, event, current?.sourceVersion);
-
-    if (preflightStatus !== 'processed') {
-      return preflightStatus;
-    }
-
-    await manager.upsert(
-      VariantSnapshotModel,
-      [
-        {
-          variantUuid: event.aggregateUuid,
-          productUuid,
+    if (payload.variants.length > 0) {
+      await manager.upsert(
+        VariantSnapshotModel,
+        payload.variants.map((variant) => ({
+          variantUuid: variant.uuid,
+          productUuid: event.aggregateId,
           sourceVersion: event.aggregateVersion,
-          name: this.stringPayload(event, 'name'),
-          status: this.statusPayload(event),
+          name: variant.name,
+          status: variant.status,
           syncedAt: new Date(),
-        },
-      ],
-      ['variantUuid'],
-    );
+        })),
+        ['variantUuid'],
+      );
+    }
 
     return 'processed';
   }
@@ -151,7 +138,7 @@ export class SnapshotEventService {
     await manager.insert(SyncIssueModel, {
       producer: event.producer,
       aggregateType: event.aggregateType,
-      aggregateUuid: event.aggregateUuid,
+      aggregateId: event.aggregateId,
       expectedVersion,
       receivedVersion: event.aggregateVersion,
       eventUuid: event.eventUuid,
@@ -171,7 +158,7 @@ export class SnapshotEventService {
           schemaVersion: event.schemaVersion,
           eventType: event.eventType,
           aggregateType: event.aggregateType,
-          aggregateUuid: event.aggregateUuid,
+          aggregateId: event.aggregateId,
           aggregateVersion: event.aggregateVersion,
           processedAt: status === 'processed' || status === 'ignored' ? new Date() : null,
           status,

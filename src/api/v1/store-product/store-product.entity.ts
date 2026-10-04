@@ -1,4 +1,4 @@
-import { Type, Expose } from 'class-transformer';
+import { Expose, Transform, Type } from 'class-transformer';
 import { IsUUID, IsDate, ValidateNested, IsNumber, IsString, IsBoolean, IsOptional, IsEnum } from 'class-validator';
 
 import { StoreOfferStatus } from './store-offer-status.enum';
@@ -153,6 +153,11 @@ export class OfferInventoryEntity {
   @Expose()
   @IsNumber()
   reserved: number;
+
+  @Expose()
+  @Transform(({ obj }) => obj.quantity - obj.reserved, { toClassOnly: true })
+  @IsNumber()
+  available: number;
 
   @Expose()
   @IsNumber()

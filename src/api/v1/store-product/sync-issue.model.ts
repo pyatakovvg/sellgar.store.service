@@ -12,7 +12,7 @@ export class SyncIssueModel {
   aggregateType: string;
 
   @Column({ name: 'aggregate_uuid', type: 'uuid' })
-  aggregateUuid: string;
+  aggregateId: string;
 
   @Column({ name: 'expected_version', type: 'int', nullable: true })
   expectedVersion?: number | null;

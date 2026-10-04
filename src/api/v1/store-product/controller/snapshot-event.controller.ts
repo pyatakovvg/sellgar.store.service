@@ -43,46 +43,6 @@ export class SnapshotEventController {
     return this.apply(event);
   }
 
-  @EventPattern('product.archived')
-  applyProductArchivedEvent(@Payload() event: IntegrationEventDto) {
-    return this.apply(event);
-  }
-
-  @EventPattern('product.disabled')
-  applyProductDisabledEvent(@Payload() event: IntegrationEventDto) {
-    return this.apply(event);
-  }
-
-  @EventPattern('product.deleted')
-  applyProductDeletedEvent(@Payload() event: IntegrationEventDto) {
-    return this.apply(event);
-  }
-
-  @EventPattern('variant.created')
-  applyVariantCreatedEvent(@Payload() event: IntegrationEventDto) {
-    return this.apply(event);
-  }
-
-  @EventPattern('variant.updated')
-  applyVariantUpdatedEvent(@Payload() event: IntegrationEventDto) {
-    return this.apply(event);
-  }
-
-  @EventPattern('variant.archived')
-  applyVariantArchivedEvent(@Payload() event: IntegrationEventDto) {
-    return this.apply(event);
-  }
-
-  @EventPattern('variant.disabled')
-  applyVariantDisabledEvent(@Payload() event: IntegrationEventDto) {
-    return this.apply(event);
-  }
-
-  @EventPattern('variant.deleted')
-  applyVariantDeletedEvent(@Payload() event: IntegrationEventDto) {
-    return this.apply(event);
-  }
-
   private apply(event: IntegrationEventDto) {
     return this.snapshotEventService.apply(event);
   }

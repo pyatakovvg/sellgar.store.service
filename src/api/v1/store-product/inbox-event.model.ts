@@ -1,7 +1,7 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryColumn } from 'typeorm';
 
 @Entity('inbox_event')
-@Index(['aggregateType', 'aggregateUuid', 'aggregateVersion'])
+@Index(['aggregateType', 'aggregateId', 'aggregateVersion'])
 export class InboxEventModel {
   @PrimaryColumn('uuid', { name: 'event_uuid' })
   eventUuid: string;
@@ -19,7 +19,7 @@ export class InboxEventModel {
   aggregateType: string;
 
   @Column({ name: 'aggregate_uuid', type: 'uuid' })
-  aggregateUuid: string;
+  aggregateId: string;
 
   @Column({ name: 'aggregate_version', type: 'int' })
   aggregateVersion: number;

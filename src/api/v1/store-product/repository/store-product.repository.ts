@@ -24,7 +24,12 @@ import { OutboxEventModel } from '../outbox-event.model';
 import { PriceHistoryModel } from '../price-history.model';
 import { ProductSnapshotModel } from '../product-snapshot.model';
 import { ShopSnapshotModel } from '../shop-snapshot.model';
-import { StorefrontOfferDetailEntity, StorefrontOfferEntity, StoreProductEntity } from '../store-product.entity';
+import {
+  OfferInventoryEntity,
+  StorefrontOfferDetailEntity,
+  StorefrontOfferEntity,
+  StoreProductEntity,
+} from '../store-product.entity';
 import { StoreProductModel } from '../store-product.model';
 import { StoreOfferModel } from '../store-offer.model';
 import { StoreOfferStatus } from '../store-offer-status.enum';
@@ -532,10 +537,20 @@ export class StoreProductRepository {
         where: { uuid: inventory.uuid },
       });
 
-      await this.insertInventoryCommand(runner.manager, params.dto.commandId, params.commandType, requestHash, result);
+      const resultInstance = this.toInventoryEntity(result);
+
+      await validateOrReject(resultInstance);
+
+      await this.insertInventoryCommand(
+        runner.manager,
+        params.dto.commandId,
+        params.commandType,
+        requestHash,
+        resultInstance,
+      );
       await runner.commitTransaction();
 
-      return result;
+      return resultInstance;
     } catch (error) {
       await runner.rollbackTransaction();
       throw error;
@@ -552,6 +567,12 @@ export class StoreProductRepository {
 
   private toEntity(entity: StoreProductModel) {
     return plainToInstance(StoreProductEntity, entity, {
+      strategy: 'excludeAll',
+    });
+  }
+
+  private toInventoryEntity(inventory: OfferInventoryModel) {
+    return plainToInstance(OfferInventoryEntity, inventory, {
       strategy: 'excludeAll',
     });
   }
@@ -633,7 +654,11 @@ export class StoreProductRepository {
       throw new ConflictException('Command is not completed');
     }
 
-    const resultInstance = plainToInstance(OfferInventoryModel, command.result);
+    const resultInstance = plainToInstance(OfferInventoryEntity, command.result, {
+      strategy: 'excludeAll',
+    });
+
+    await validateOrReject(resultInstance);
 
     return resultInstance;
   }
@@ -659,7 +684,7 @@ export class StoreProductRepository {
     commandId: string,
     commandType: string,
     requestHash: string,
-    result: OfferInventoryModel,
+    result: OfferInventoryEntity,
   ) {
     return manager.insert(CommandRequestModel, {
       commandId,
