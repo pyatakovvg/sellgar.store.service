@@ -56,7 +56,6 @@ export class SnapshotEventService {
           shopUuid: event.aggregateId,
           sourceVersion: event.aggregateVersion,
           name: this.stringPayload(event, 'name'),
-          status: this.statusPayload(event),
           syncedAt: new Date(),
         },
       ],
@@ -173,26 +172,4 @@ export class SnapshotEventService {
     return String(event.payload[field] ?? '');
   }
 
-  private optionalStringPayload(event: IntegrationEventDto, field: string) {
-    const value = event.payload[field];
-    return typeof value === 'string' ? value : null;
-  }
-
-  private statusPayload(event: IntegrationEventDto) {
-    const status = this.optionalStringPayload(event, 'status');
-
-    if (status) {
-      return status;
-    }
-
-    if (event.eventType.endsWith('.disabled')) {
-      return 'disabled';
-    }
-
-    if (event.eventType.endsWith('.archived') || event.eventType.endsWith('.deleted')) {
-      return 'archived';
-    }
-
-    return 'active';
-  }
 }

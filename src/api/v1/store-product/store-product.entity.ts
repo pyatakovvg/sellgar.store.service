@@ -40,10 +40,6 @@ export class ShopSnapshotEntity {
   name: string;
 
   @Expose()
-  @IsString()
-  status: string;
-
-  @Expose()
   @IsDate()
   syncedAt: Date;
 }

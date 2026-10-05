@@ -18,21 +18,6 @@ export class SnapshotEventController {
     return this.apply(event);
   }
 
-  @EventPattern('shop.archived')
-  applyShopArchivedEvent(@Payload() event: IntegrationEventDto) {
-    return this.apply(event);
-  }
-
-  @EventPattern('shop.disabled')
-  applyShopDisabledEvent(@Payload() event: IntegrationEventDto) {
-    return this.apply(event);
-  }
-
-  @EventPattern('shop.deleted')
-  applyShopDeletedEvent(@Payload() event: IntegrationEventDto) {
-    return this.apply(event);
-  }
-
   @EventPattern('product.created')
   applyProductCreatedEvent(@Payload() event: IntegrationEventDto) {
     return this.apply(event);

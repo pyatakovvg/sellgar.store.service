@@ -14,13 +14,14 @@
 - Не добавлять cart/order lifecycle в этот сервис.
 - Не хранить catalog product data как источник истины; хранить external UUID и
   минимальные snapshots для локальной проверки и read-model.
-- `product_snapshot`, `variant_snapshot` и `shop_snapshot` должны оставаться
-  минимальными: UUID, `source_version`, имя, статус и технические timestamps.
+- `product_snapshot` и `variant_snapshot` должны оставаться минимальными: UUID,
+  `source_version`, имя, статус и технические timestamps. `shop_snapshot` хранит UUID,
+  `source_version`, имя и технические timestamps; lifecycle у Shop отсутствует.
 - Полную модель товара/варианта/магазина собирает gateway/BFF через сервисы
   владельцы, а не `store_srv`.
 - Currency является общей бизнес-сущностью и называется `currency`, без
   `shopCurrency`, `variantCurrency` или других переименований.
-- Snapshot consumer должен применять `payload.status` как источник истины. Имя события
+- Product/variant snapshot consumer должен применять `payload.status` как источник истины. Имя события
   (`*.deleted`, `*.disabled`, `*.archived`) можно использовать только как fallback для старых
   сообщений без явного `status`.
 - Перед расширением таблиц сверять целевую модель `store_product`,

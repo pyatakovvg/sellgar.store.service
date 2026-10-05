@@ -592,8 +592,8 @@ export class StoreProductRepository {
   private async validateSnapshots(manager: EntityManager, dto: CreateStoreProductDto) {
     const shop = await manager.findOne(ShopSnapshotModel, { where: { shopUuid: dto.shopUuid } });
 
-    if (!shop || shop.status !== 'active') {
-      throw new BadRequestException('Shop snapshot is missing or inactive');
+    if (!shop) {
+      throw new BadRequestException('Shop snapshot is missing');
     }
 
     const product = await manager.findOne(ProductSnapshotModel, { where: { productUuid: dto.productUuid } });
