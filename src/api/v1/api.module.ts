@@ -12,6 +12,27 @@ import { STORE_EVENT_SERVICE } from './store-product/service/outbox-relay.servic
       isGlobal: true,
       clients: [
         {
+          name: 'PRODUCT_V2_COMMAND_SERVICE',
+          imports: [ConfigModule],
+          inject: [ConfigService],
+          useFactory: (config: ConfigService) => ({
+            transport: Transport.RMQ,
+            options: {
+              urls: [
+                {
+                  port: Number(config.get('AMQP_PORT')),
+                  hostname: config.get('AMQP_HOSTNAME'),
+                  username: config.get('AMQP_USERNAME'),
+                  password: config.get('AMQP_PASSWORD'),
+                },
+              ],
+              queue: config.getOrThrow('PRODUCT_V2_COMMAND_QUEUE'),
+              queueOptions: { durable: true },
+              persistent: true,
+            },
+          }),
+        },
+        {
           name: STORE_EVENT_SERVICE,
           imports: [ConfigModule],
           inject: [ConfigService],

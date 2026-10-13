@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
-import { OutboxEventModel } from '../outbox-event.model';
+import { OutboxEventModel } from '../model/outbox-event.model';
 
 type QueryRow = Record<string, unknown>;
 
@@ -80,13 +80,7 @@ export class OutboxRepository {
     );
   }
 
-  markFailed(
-    eventUuid: string,
-    attempts: number,
-    retryAt: Date,
-    error: unknown,
-    terminal: boolean,
-  ): Promise<unknown> {
+  markFailed(eventUuid: string, attempts: number, retryAt: Date, error: unknown, terminal: boolean): Promise<unknown> {
     return this.dataSource.manager.query(
       `
         UPDATE outbox_event
@@ -98,7 +92,13 @@ export class OutboxRepository {
           last_error = $4
         WHERE uuid = $1
       `,
-      [eventUuid, attempts + 1, retryAt, error instanceof Error ? error.message : String(error), terminal ? 'dead' : 'failed'],
+      [
+        eventUuid,
+        attempts + 1,
+        retryAt,
+        error instanceof Error ? error.message : String(error),
+        terminal ? 'dead' : 'failed',
+      ],
     );
   }
 

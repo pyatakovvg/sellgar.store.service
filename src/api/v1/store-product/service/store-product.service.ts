@@ -1,86 +1,73 @@
 import { Injectable } from '@nestjs/common';
-import { validateOrReject } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-
-import { ArchiveStoreProductDto } from '../repository/dto/archive-store-product.dto';
-import { AdjustOfferInventoryDto } from '../repository/dto/adjust-offer-inventory.dto';
-import { CreateStoreProductDto } from '../repository/dto/create-store-product.dto';
-import { ReceiptOfferInventoryDto } from '../repository/dto/receipt-offer-inventory.dto';
-import { UpdateStoreProductDto } from '../repository/dto/update-store-product.dto';
-import { WriteOffOfferInventoryDto } from '../repository/dto/write-off-offer-inventory.dto';
+import { validateOrReject } from 'class-validator';
+import { StoreProductResultEntity, StorefrontOfferResultEntity } from '../entity';
 import { StoreProductRepository } from '../repository/store-product.repository';
-import { StorefrontOfferResultEntity, StoreProductResultEntity } from '../store-product.entity';
+import { StoreProductQueryRepository } from '../repository/store-product-query.repository';
+import { InventoryRepository } from '../repository/inventory.repository';
+import { InventoryMovementType } from '../enum/inventory-movement-type.enum';
+import { CommandFactory } from './command/command.factory';
+import { CreateStoreProductCommand } from './command/create-store-product.command';
+import { UpdateStoreProductCommand } from './command/update-store-product.command';
+import { ArchiveStoreProductCommand } from './command/archive-store-product.command';
+import { GetAllStoreProductsCommand } from './command/get-all-store-products.command';
+import { InventoryMovementCommand } from './command/inventory-movement.command';
+import { AdjustRecordInventoryCommand } from './command/adjust-record-inventory.command';
 
 @Injectable()
 export class StoreProductService {
-  constructor(private readonly storeProductRepository: StoreProductRepository) {}
-
-  async findAll(query: any) {
-    const result = await this.storeProductRepository.findAllAndCount(query).then(({ data, count }) => {
-      return {
-        data,
-        meta: {
-          totalRows: count,
-        },
-      };
+  constructor(
+    private readonly repository: StoreProductRepository,
+    private readonly queries: StoreProductQueryRepository,
+    private readonly inventory: InventoryRepository,
+    private readonly commands: CommandFactory,
+  ) {}
+  async getAll(input: GetAllStoreProductsCommand = {}) {
+    const query = await this.commands.create(GetAllStoreProductsCommand, input);
+    const result = plainToInstance(StoreProductResultEntity, await this.queries.getAll(query), {
+      excludeExtraneousValues: true,
     });
-
-    const resultInstance = plainToInstance(StoreProductResultEntity, result, {
-      strategy: 'excludeAll',
+    await validateOrReject(result);
+    return result;
+  }
+  getByUuid(uuid: string) {
+    return this.queries.getByUuid(uuid);
+  }
+  async getOffers() {
+    const result = plainToInstance(StorefrontOfferResultEntity, await this.queries.getOffers(), {
+      excludeExtraneousValues: true,
     });
-
-    await validateOrReject(resultInstance);
-
-    return resultInstance;
+    await validateOrReject(result);
+    return result;
   }
-
-  findByUuid(uuid: string) {
-    return this.storeProductRepository.findByUuid(uuid);
+  getOffer(uuid: string) {
+    return this.queries.getOffer(uuid);
   }
-
-  async findOffersAll() {
-    const result = await this.storeProductRepository.findOffersAllAndCount().then(({ data, count }) => {
-      return {
-        data,
-        meta: {
-          totalRows: count,
-        },
-      };
-    });
-    const resultInstance = plainToInstance(StorefrontOfferResultEntity, result, {
-      strategy: 'excludeAll',
-    });
-
-    await validateOrReject(resultInstance);
-
-    return resultInstance;
+  async create(input: CreateStoreProductCommand) {
+    return this.repository.create(await this.commands.create(CreateStoreProductCommand, input));
   }
-
-  findOfferByUuid(uuid: string) {
-    return this.storeProductRepository.findOfferByUuid(uuid);
+  async update(input: UpdateStoreProductCommand) {
+    return this.repository.update(await this.commands.create(UpdateStoreProductCommand, input));
   }
-
-  create(dto: CreateStoreProductDto) {
-    return this.storeProductRepository.create(dto);
+  async archive(input: ArchiveStoreProductCommand) {
+    return this.repository.archive(await this.commands.create(ArchiveStoreProductCommand, input));
   }
-
-  update(dto: UpdateStoreProductDto) {
-    return this.storeProductRepository.update(dto);
+  async receiptInventory(input: InventoryMovementCommand) {
+    return this.inventory.apply(
+      await this.commands.create(InventoryMovementCommand, input),
+      InventoryMovementType.RECEIPT,
+    );
   }
-
-  archive(dto: ArchiveStoreProductDto) {
-    return this.storeProductRepository.archive(dto);
+  async writeOffInventory(input: InventoryMovementCommand) {
+    return this.inventory.apply(
+      await this.commands.create(InventoryMovementCommand, input),
+      InventoryMovementType.WRITE_OFF,
+    );
   }
-
-  receiptInventory(dto: ReceiptOfferInventoryDto) {
-    return this.storeProductRepository.receiptInventory(dto);
-  }
-
-  writeOffInventory(dto: WriteOffOfferInventoryDto) {
-    return this.storeProductRepository.writeOffInventory(dto);
-  }
-
-  adjustInventory(dto: AdjustOfferInventoryDto) {
-    return this.storeProductRepository.adjustInventory(dto);
+  async adjustInventory(input: AdjustRecordInventoryCommand) {
+    return this.inventory.apply(
+      await this.commands.create(AdjustRecordInventoryCommand, input),
+      InventoryMovementType.ADJUSTMENT,
+    );
   }
 }

@@ -2,59 +2,56 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
-
 import { AppModule } from './app.module';
+import { RpcHttpExceptionFilter } from './common/rpc-http-exception.filter';
 
-async function bootstrap() {
-  const logger = new Logger();
-  const config = new ConfigService();
-
-  const commandApp = await NestFactory.createMicroservice<MicroserviceOptions>(AppModule, {
-    transport: Transport.RMQ,
-    options: {
-      urls: [
-        {
-          port: Number(config.get('AMQP_PORT')),
-          hostname: config.get('AMQP_HOSTNAME'),
-          username: config.get('AMQP_USERNAME'),
-          password: config.get('AMQP_PASSWORD'),
-        },
-      ],
-      persistent: true,
-      queue: config.get('AMQP_STORE_SRV_COMMAND_QUEUE'),
-      queueOptions: {
-        durable: true,
+async function bootstrap(): Promise<void> {
+  const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalFilters(new RpcHttpExceptionFilter());
+  const config = app.get(ConfigService);
+  const urls = [
+    {
+      port: Number(config.get('AMQP_PORT')),
+      hostname: config.getOrThrow<string>('AMQP_HOSTNAME'),
+      username: config.getOrThrow<string>('AMQP_USERNAME'),
+      password: config.getOrThrow<string>('AMQP_PASSWORD'),
+    },
+  ];
+  app.connectMicroservice<MicroserviceOptions>(
+    {
+      transport: Transport.RMQ,
+      options: {
+        urls,
+        persistent: true,
+        queue: config.getOrThrow('AMQP_STORE_SRV_COMMAND_QUEUE'),
+        queueOptions: { durable: true },
       },
     },
-  });
-
-  const eventApp = await NestFactory.createMicroservice<MicroserviceOptions>(AppModule, {
-    transport: Transport.RMQ,
-    options: {
-      urls: [
-        {
-          port: Number(config.get('AMQP_PORT')),
-          hostname: config.get('AMQP_HOSTNAME'),
-          username: config.get('AMQP_USERNAME'),
-          password: config.get('AMQP_PASSWORD'),
-        },
-      ],
-      persistent: true,
-      wildcards: true,
-      queue: config.get('AMQP_STORE_SRV_EVENT_QUEUE'),
-      queueOptions: {
-        durable: true,
+    { inheritAppConfig: true },
+  );
+  app.connectMicroservice<MicroserviceOptions>(
+    {
+      transport: Transport.RMQ,
+      options: {
+        urls,
+        persistent: true,
+        wildcards: true,
+        noAck: false,
+        queue: config.getOrThrow('AMQP_STORE_SRV_EVENT_QUEUE'),
+        queueOptions: { durable: true },
+        exchange: config.getOrThrow('AMQP_EVENTS_EXCHANGE'),
+        exchangeType: 'topic',
       },
-      exchange: config.get('AMQP_EVENTS_EXCHANGE'),
-      exchangeType: 'topic',
     },
-  });
-
-  commandApp.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  eventApp.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-
-  await Promise.all([commandApp.listen(), eventApp.listen()]);
-  logger.log('Store service has been started.');
+    { inheritAppConfig: true },
+  );
+  await app.init();
+  await app.startAllMicroservices();
+  Logger.log('Store service started', 'Bootstrap');
 }
-
-bootstrap();
+void bootstrap().catch((error) => {
+  Logger.error(error instanceof Error ? error.message : 'Store bootstrap failed', 'Bootstrap');
+  process.exitCode = 1;
+});

@@ -1,6 +1,9 @@
-import { IsIn, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 
 export class ProductSnapshotVariantDto {
+  @IsOptional()
+  @IsUUID()
+  productUuid?: string;
   @IsUUID()
   uuid: string;
 

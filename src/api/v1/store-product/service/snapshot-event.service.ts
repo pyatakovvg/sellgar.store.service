@@ -3,13 +3,13 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { plainToInstance } from 'class-transformer';
 import { validateOrReject } from 'class-validator';
 
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, LessThanOrEqual } from 'typeorm';
 
-import { InboxEventModel } from '../inbox-event.model';
-import { ProductSnapshotModel } from '../product-snapshot.model';
-import { ShopSnapshotModel } from '../shop-snapshot.model';
-import { SyncIssueModel } from '../sync-issue.model';
-import { VariantSnapshotModel } from '../variant-snapshot.model';
+import { InboxEventModel } from '../model/inbox-event.model';
+import { ProductSnapshotModel } from '../model/product-snapshot.model';
+import { ShopSnapshotModel } from '../model/shop-snapshot.model';
+import { SyncIssueModel } from '../model/sync-issue.model';
+import { VariantSnapshotModel } from '../model/variant-snapshot.model';
 
 import { IntegrationEventDto } from './dto/integration-event.dto';
 import { ProductSnapshotPayloadDto } from './dto/product-snapshot-payload.dto';
@@ -22,9 +22,12 @@ export class SnapshotEventService {
 
   async apply(event: IntegrationEventDto) {
     await this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
+        `${event.producer}:${event.aggregateType}:${event.aggregateId}`,
+      ]);
       const existing = await manager.findOne(InboxEventModel, { where: { eventUuid: event.eventUuid } });
 
-      if (existing?.status === 'processed') {
+      if (existing?.status === 'processed' || existing?.status === 'ignored') {
         return;
       }
 
@@ -32,7 +35,11 @@ export class SnapshotEventService {
 
       if (event.aggregateType === 'shop') {
         status = await this.applyShopEvent(manager, event);
-      } else if (event.aggregateType === 'product') {
+      } else if (
+        event.aggregateType === 'product' &&
+        event.producer === 'product_srv_v2' &&
+        event.schemaVersion === 3
+      ) {
         status = await this.applyProductEvent(manager, event);
       }
 
@@ -74,7 +81,11 @@ export class SnapshotEventService {
 
     const current = await manager.findOne(ProductSnapshotModel, { where: { productUuid: event.aggregateId } });
 
-    const preflightStatus = await this.checkVersion(manager, event, current?.sourceVersion);
+    const preflightStatus = await this.checkVersion(
+      manager,
+      event,
+      current?.sourceProducer === 'product_srv_v2' ? current.sourceVersion : undefined,
+    );
 
     if (preflightStatus !== 'processed') {
       return preflightStatus;
@@ -85,6 +96,7 @@ export class SnapshotEventService {
       [
         {
           productUuid: event.aggregateId,
+          sourceProducer: 'product_srv_v2',
           sourceVersion: event.aggregateVersion,
           name: payload.name,
           status: payload.status,
@@ -93,6 +105,9 @@ export class SnapshotEventService {
       ],
       ['productUuid'],
     );
+
+    if (payload.variants.some((variant) => variant.productUuid !== undefined && variant.productUuid !== payload.uuid))
+      throw new Error('Variant event payload belongs to another product');
 
     if (payload.variants.length > 0) {
       await manager.upsert(
@@ -112,7 +127,71 @@ export class SnapshotEventService {
     return 'processed';
   }
 
-  private async checkVersion(manager: EntityManager, event: IntegrationEventDto, currentVersion?: number): Promise<EventApplyStatus> {
+  async synchronizeProduct(payload: ProductSnapshotPayloadDto): Promise<void> {
+    await validateOrReject(payload, { whitelist: true });
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
+        `product_srv_v2:product:${payload.uuid}`,
+      ]);
+      const current = await manager.findOneBy(ProductSnapshotModel, { productUuid: payload.uuid });
+      if (current?.sourceProducer === 'product_srv_v2' && current.sourceVersion > payload.version) return;
+      await manager.upsert(
+        ProductSnapshotModel,
+        {
+          productUuid: payload.uuid,
+          sourceProducer: 'product_srv_v2',
+          sourceVersion: payload.version,
+          name: payload.name,
+          status: payload.status,
+          syncedAt: new Date(),
+        },
+        ['productUuid'],
+      );
+      if (payload.variants.some((variant) => variant.productUuid !== undefined && variant.productUuid !== payload.uuid))
+        throw new Error('Variant snapshot belongs to another product');
+      if (payload.variants.length)
+        await manager.upsert(
+          VariantSnapshotModel,
+          payload.variants.map((variant) => ({
+            variantUuid: variant.uuid,
+            productUuid: payload.uuid,
+            sourceVersion: payload.version,
+            name: variant.name,
+            status: variant.status,
+            syncedAt: new Date(),
+          })),
+          ['variantUuid'],
+        );
+      await manager.update(
+        SyncIssueModel,
+        {
+          producer: 'product_srv_v2',
+          aggregateType: 'product',
+          aggregateId: payload.uuid,
+          receivedVersion: LessThanOrEqual(payload.version),
+          status: 'open',
+        },
+        { status: 'resolved', resolvedAt: new Date() },
+      );
+      await manager.update(
+        InboxEventModel,
+        {
+          producer: 'product_srv_v2',
+          aggregateType: 'product',
+          aggregateId: payload.uuid,
+          aggregateVersion: LessThanOrEqual(payload.version),
+          status: 'parked',
+        },
+        { status: 'ignored', processedAt: new Date() },
+      );
+    });
+  }
+
+  private async checkVersion(
+    manager: EntityManager,
+    event: IntegrationEventDto,
+    currentVersion?: number,
+  ): Promise<EventApplyStatus> {
     if (currentVersion && event.aggregateVersion <= currentVersion) {
       return 'ignored';
     }
@@ -127,7 +206,12 @@ export class SnapshotEventService {
     return 'processed';
   }
 
-  private async insertSyncIssue(manager: EntityManager, event: IntegrationEventDto, expectedVersion: number | null, reason: string) {
+  private async insertSyncIssue(
+    manager: EntityManager,
+    event: IntegrationEventDto,
+    expectedVersion: number | null,
+    reason: string,
+  ) {
     const existing = await manager.findOne(SyncIssueModel, { where: { eventUuid: event.eventUuid, status: 'open' } });
 
     if (existing) {
@@ -147,7 +231,12 @@ export class SnapshotEventService {
     });
   }
 
-  private recordInboxEvent(manager: EntityManager, event: IntegrationEventDto, status: EventApplyStatus, attempts: number) {
+  private recordInboxEvent(
+    manager: EntityManager,
+    event: IntegrationEventDto,
+    status: EventApplyStatus,
+    attempts: number,
+  ) {
     return manager.upsert(
       InboxEventModel,
       [
@@ -171,5 +260,4 @@ export class SnapshotEventService {
   private stringPayload(event: IntegrationEventDto, field: string) {
     return String(event.payload[field] ?? '');
   }
-
 }

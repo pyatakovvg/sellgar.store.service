@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 
-import { OutboxEventModel } from '../outbox-event.model';
+import { OutboxEventModel } from '../model/outbox-event.model';
 import { OutboxRepository } from '../repository/outbox.repository';
 
 export const STORE_EVENT_SERVICE = 'STORE_EVENT_SERVICE';
@@ -22,14 +22,8 @@ export class OutboxRelayService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    this.publishTimer = setInterval(
-      () => void this.publishPending(),
-      this.number('OUTBOX_PUBLISH_INTERVAL_MS', 1000),
-    );
-    this.metricsTimer = setInterval(
-      () => void this.logMetrics(),
-      this.number('OUTBOX_METRICS_INTERVAL_MS', 30000),
-    );
+    this.publishTimer = setInterval(() => void this.publishPending(), this.number('OUTBOX_PUBLISH_INTERVAL_MS', 1000));
+    this.metricsTimer = setInterval(() => void this.logMetrics(), this.number('OUTBOX_METRICS_INTERVAL_MS', 30000));
     void this.publishPending();
   }
 

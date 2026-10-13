@@ -4,9 +4,9 @@ import { plainToInstance } from 'class-transformer';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { DataSource, EntityManager } from 'typeorm';
 
-import { InboxEventModel } from '../inbox-event.model';
-import { ProductSnapshotModel } from '../product-snapshot.model';
-import { VariantSnapshotModel } from '../variant-snapshot.model';
+import { InboxEventModel } from '../model/inbox-event.model';
+import { ProductSnapshotModel } from '../model/product-snapshot.model';
+import { VariantSnapshotModel } from '../model/variant-snapshot.model';
 import { IntegrationEventDto } from './dto/integration-event.dto';
 import { SnapshotEventService } from './snapshot-event.service';
 
@@ -14,6 +14,7 @@ describe(SnapshotEventService.name, () => {
   const productUuid = '11111111-1111-4111-8111-111111111111';
   const variantUuid = '22222222-2222-4222-8222-222222222222';
   const manager = {
+    query: jest.fn<(...args: unknown[]) => Promise<unknown>>(),
     findOne: jest.fn<(model: unknown) => Promise<unknown>>(),
     upsert: jest.fn<(...args: unknown[]) => Promise<void>>(),
     insert: jest.fn<(...args: unknown[]) => Promise<void>>(),
@@ -47,7 +48,7 @@ describe(SnapshotEventService.name, () => {
     jest.clearAllMocks();
     manager.findOne.mockImplementation(async (model: unknown) => {
       if (model === InboxEventModel) return null;
-      if (model === ProductSnapshotModel) return { sourceVersion: 1 };
+      if (model === ProductSnapshotModel) return { sourceProducer: 'product_srv_v2', sourceVersion: 1 };
       return null;
     });
     manager.upsert.mockResolvedValue(undefined);

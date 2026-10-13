@@ -1,65 +1,71 @@
 import { Controller } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
-
-import { ArchiveStoreProductDto } from '../repository/dto/archive-store-product.dto';
-import { AdjustOfferInventoryDto } from '../repository/dto/adjust-offer-inventory.dto';
-import { CreateStoreProductDto } from '../repository/dto/create-store-product.dto';
-import { ReceiptOfferInventoryDto } from '../repository/dto/receipt-offer-inventory.dto';
-import { UpdateStoreProductDto } from '../repository/dto/update-store-product.dto';
-import { WriteOffOfferInventoryDto } from '../repository/dto/write-off-offer-inventory.dto';
 import { StoreProductService } from '../service/store-product.service';
+import { CreateStoreProductDto } from './dto/create-store-product.dto';
+import { UpdateStoreProductDto } from './dto/update-store-product.dto';
+import { ArchiveStoreProductDto } from './dto/archive-store-product.dto';
+import { RecordInventoryDto } from './dto/record-inventory.dto';
+import { AdjustRecordInventoryDto } from './dto/adjust-record-inventory.dto';
+import { GetAllStoreProductsDto } from './dto/get-all-store-products.dto';
 
 @Controller()
 export class StoreProductController {
-  constructor(private readonly storeProductService: StoreProductService) {}
-
-  @MessagePattern({ cmd: 'store.product.getAll' })
-  findAll(@Payload('query') query: any) {
-    return this.storeProductService.findAll(query);
+  constructor(private readonly service: StoreProductService) {}
+  @MessagePattern({ cmd: 'store.product.getAll' }) getAll(
+    @Payload('query')
+    query: GetAllStoreProductsDto,
+  ) {
+    return this.service.getAll(query);
   }
-
-  @MessagePattern({ cmd: 'store.product.getByUuid' })
-  findByUuid(@Payload('uuid') uuid: string) {
-    return this.storeProductService.findByUuid(uuid);
+  @MessagePattern({ cmd: 'store.product.getByUuid' }) getByUuid(
+    @Payload('uuid')
+    uuid: string,
+  ) {
+    return this.service.getByUuid(uuid);
   }
-
-  @MessagePattern({ cmd: 'store.offer.getAll' })
-  findOffersAll() {
-    return this.storeProductService.findOffersAll();
+  @MessagePattern({ cmd: 'store.offer.getAll' }) getOffers() {
+    return this.service.getOffers();
   }
-
-  @MessagePattern({ cmd: 'store.offer.getByUuid' })
-  findOfferByUuid(@Payload('uuid') uuid: string) {
-    return this.storeProductService.findOfferByUuid(uuid);
+  @MessagePattern({ cmd: 'store.offer.getByUuid' }) getOffer(
+    @Payload('uuid')
+    uuid: string,
+  ) {
+    return this.service.getOffer(uuid);
   }
-
-  @MessagePattern({ cmd: 'store.product.create' })
-  create(@Payload() dto: CreateStoreProductDto) {
-    return this.storeProductService.create(dto);
+  @MessagePattern({ cmd: 'store.product.create' }) create(
+    @Payload()
+    dto: CreateStoreProductDto,
+  ) {
+    return this.service.create(dto);
   }
-
-  @MessagePattern({ cmd: 'store.product.update' })
-  update(@Payload() dto: UpdateStoreProductDto) {
-    return this.storeProductService.update(dto);
+  @MessagePattern({ cmd: 'store.product.update' }) update(
+    @Payload()
+    dto: UpdateStoreProductDto,
+  ) {
+    return this.service.update(dto);
   }
-
-  @MessagePattern({ cmd: 'store.product.archive' })
-  archive(@Payload() dto: ArchiveStoreProductDto) {
-    return this.storeProductService.archive(dto);
+  @MessagePattern({ cmd: 'store.product.archive' }) archive(
+    @Payload()
+    dto: ArchiveStoreProductDto,
+  ) {
+    return this.service.archive(dto);
   }
-
-  @MessagePattern({ cmd: 'store.inventory.receipt' })
-  receiptInventory(@Payload() dto: ReceiptOfferInventoryDto) {
-    return this.storeProductService.receiptInventory(dto);
+  @MessagePattern({ cmd: 'store.inventory.receipt' }) receipt(
+    @Payload()
+    dto: RecordInventoryDto,
+  ) {
+    return this.service.receiptInventory(dto);
   }
-
-  @MessagePattern({ cmd: 'store.inventory.writeOff' })
-  writeOffInventory(@Payload() dto: WriteOffOfferInventoryDto) {
-    return this.storeProductService.writeOffInventory(dto);
+  @MessagePattern({ cmd: 'store.inventory.writeOff' }) writeOff(
+    @Payload()
+    dto: RecordInventoryDto,
+  ) {
+    return this.service.writeOffInventory(dto);
   }
-
-  @MessagePattern({ cmd: 'store.inventory.adjust' })
-  adjustInventory(@Payload() dto: AdjustOfferInventoryDto) {
-    return this.storeProductService.adjustInventory(dto);
+  @MessagePattern({ cmd: 'store.inventory.adjust' }) adjust(
+    @Payload()
+    dto: AdjustRecordInventoryDto,
+  ) {
+    return this.service.adjustInventory(dto);
   }
 }

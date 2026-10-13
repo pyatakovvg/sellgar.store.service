@@ -3,7 +3,7 @@ import { ClientProxy } from '@nestjs/microservices';
 import { describe, expect, it, jest } from '@jest/globals';
 import { of, throwError } from 'rxjs';
 
-import { OutboxEventModel } from '../outbox-event.model';
+import { OutboxEventModel } from '../model/outbox-event.model';
 import { OutboxRepository } from '../repository/outbox.repository';
 import { OutboxRelayService } from './outbox-relay.service';
 
@@ -70,12 +70,6 @@ describe(OutboxRelayService.name, () => {
     await (relay as unknown as TestableOutboxRelay).publishPending();
 
     expect(outbox.markPublished).not.toHaveBeenCalled();
-    expect(outbox.markFailed).toHaveBeenCalledWith(
-      event.uuid,
-      0,
-      expect.any(Date),
-      publishError,
-      false,
-    );
+    expect(outbox.markFailed).toHaveBeenCalledWith(event.uuid, 0, expect.any(Date), publishError, false);
   });
 });
