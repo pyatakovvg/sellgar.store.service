@@ -20,17 +20,19 @@ export class StoreProductController {
   @MessagePattern({ cmd: 'store.product.getByUuid' }) getByUuid(
     @Payload('uuid')
     uuid: string,
+    @Payload('query') query: GetAllStoreProductsDto,
   ) {
-    return this.service.getByUuid(uuid);
+    return this.service.getByUuid(uuid, query);
   }
-  @MessagePattern({ cmd: 'store.offer.getAll' }) getOffers() {
-    return this.service.getOffers();
+  @MessagePattern({ cmd: 'store.offer.getAll' }) getOffers(@Payload('query') query: GetAllStoreProductsDto) {
+    return this.service.getOffers(query);
   }
   @MessagePattern({ cmd: 'store.offer.getByUuid' }) getOffer(
     @Payload('uuid')
     uuid: string,
+    @Payload('query') query: GetAllStoreProductsDto,
   ) {
-    return this.service.getOffer(uuid);
+    return this.service.getOffer(uuid, query);
   }
   @MessagePattern({ cmd: 'store.product.create' }) create(
     @Payload()

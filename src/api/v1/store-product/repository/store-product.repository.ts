@@ -66,7 +66,7 @@ export class StoreProductRepository {
     });
   }
   private async complete(manager: EntityManager, uuid: string, eventType: string) {
-    const result = await this.queries.getByUuid(uuid, manager);
+    const result = await this.queries.getByUuid(uuid, {}, manager);
     await this.events.add(manager, 'store_product', uuid, result.version, eventType, result);
     return result;
   }

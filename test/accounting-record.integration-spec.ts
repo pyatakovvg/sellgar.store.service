@@ -16,6 +16,8 @@ import { CommandFactory } from '../src/api/v1/store-product/service/command/comm
 import { SnapshotEventService } from '../src/api/v1/store-product/service/snapshot-event.service';
 import { ProductSnapshotPayloadDto } from '../src/api/v1/store-product/service/dto/product-snapshot-payload.dto';
 import { IntegrationEventDto } from '../src/api/v1/store-product/service/dto/integration-event.dto';
+import { StoreProductStatus } from '../src/api/v1/store-product/enum/store-product-status.enum';
+import { StoreOfferStatus } from '../src/api/v1/store-product/enum/store-offer-status.enum';
 import { StoreProductEntity } from '../src/api/v1/store-product/entity';
 
 import { config } from 'dotenv';
@@ -214,7 +216,7 @@ describe('Accounting records in PostgreSQL', () => {
         },
       ],
     });
-    const result = await service.getAll({ search: 'Подарочная' });
+    const result = await service.getAll({ search: 'BLUE-L' });
     expect(result.data[0].offers[0].records).toHaveLength(2);
     expect(
       result.data[0].offers[0].records
@@ -323,6 +325,219 @@ describe('Accounting records in PostgreSQL', () => {
     expect(result.data).toEqual([]);
   });
 
+  it('filters unavailable records in public SQL while keeping all records in admin queries', async () => {
+    const catalogUuid = randomUUID();
+    const catalogVariantUuid = randomUUID();
+    await snapshots.apply(
+      event(catalogUuid, 1, 'active', [{ uuid: catalogVariantUuid, name: 'Черная', status: 'active' }]),
+    );
+    const created = await service.create({
+      ...input(),
+      productUuid: catalogUuid,
+      offers: [
+        {
+          variantUuid: catalogVariantUuid,
+          showing: true,
+          currentPrice: { value: '125.50', currencyCode: 'RUB' },
+          records: [
+            { article: 'AVAILABLE', clarifications: [{ value: 'Доступная' }] },
+            { article: 'EMPTY', clarifications: [] },
+            { article: 'RESERVED', clarifications: [{ value: 'Полностью зарезервирована' }] },
+          ],
+        },
+      ],
+    });
+    const offer = created.offers[0];
+    const available = offer.records.find((record) => record.article === 'AVAILABLE');
+    const reserved = offer.records.find((record) => record.article === 'RESERVED');
+    await source.query('UPDATE record_inventory SET quantity=5, reserved=1 WHERE record_uuid=$1', [available.uuid]);
+    await source.query('UPDATE record_inventory SET quantity=5, reserved=5 WHERE record_uuid=$1', [reserved.uuid]);
+
+    const details = await service.getOffer(offer.uuid, { availableMin: 1 });
+    expect(details.offer.records.map((record) => record.article)).toEqual(['AVAILABLE']);
+    expect(details.offer.records[0].inventory.available).toBe(4);
+    expect(
+      details.siblingOffers.flatMap((item) => item.records).every((record) => record.inventory.available > 0),
+    ).toBe(true);
+    const list = await service.getOffers({ availableMin: 1 });
+    expect(list.data.find((item) => item.uuid === offer.uuid).records.map((record) => record.article)).toEqual([
+      'AVAILABLE',
+    ]);
+    expect(list.meta.totalRows).toBe(list.data.length);
+    expect((await service.getByUuid(created.uuid)).offers[0].records).toHaveLength(3);
+
+    await source.query('UPDATE record_inventory SET reserved=quantity WHERE record_uuid=$1', [available.uuid]);
+    await expect(service.getOffer(offer.uuid, { availableMin: 1 })).rejects.toThrow('not found');
+    expect((await service.getOffers({ availableMin: 1 })).data.some((item) => item.uuid === offer.uuid)).toBe(false);
+    expect((await service.getByUuid(created.uuid)).offers[0].records).toHaveLength(3);
+  });
+
+  const createFilterFixture = async () => {
+    const catalogUuid = randomUUID();
+    const red = randomUUID();
+    const blue = randomUUID();
+    const suffix = randomUUID().slice(0, 8);
+    await snapshots.apply(
+      event(catalogUuid, 1, 'active', [
+        { uuid: red, name: 'Красная', status: 'active' },
+        { uuid: blue, name: 'Синяя', status: 'active' },
+      ]),
+    );
+    const created = await service.create({
+      ...input(),
+      productUuid: catalogUuid,
+      showing: false,
+      offers: [
+        {
+          variantUuid: red,
+          showing: true,
+          currentPrice: { value: '10', currencyCode: 'RUB' },
+          records: [
+            { article: `FILTER-LIVE-${suffix}`, clarifications: [{ value: 'Есть' }] },
+            { article: `FILTER-ZERO-${suffix}`, clarifications: [] },
+          ],
+        },
+        {
+          variantUuid: blue,
+          showing: false,
+          currentPrice: { value: '10', currencyCode: 'RUB' },
+          records: [
+            { article: `FILTER-HELD-${suffix}`, clarifications: [] },
+            { article: `FILTER-LOW-${suffix}`, clarifications: [] },
+          ],
+        },
+      ],
+    });
+    for (const [article, quantity, reserved] of [
+      ['LIVE', 5, 1],
+      ['HELD', 10, 10],
+      ['LOW', 3, 0],
+    ] as const) {
+      await source.query(
+        `UPDATE record_inventory SET quantity=$1,reserved=$2
+        WHERE record_uuid=(SELECT uuid FROM accounting_record WHERE article=$3)`,
+        [quantity, reserved, `FILTER-${article}-${suffix}`],
+      );
+    }
+    return { ...created, suffix };
+  };
+
+  it('applies flat showing flags, zero bounds and all six inclusive inventory bounds', async () => {
+    const fixture = await createFilterFixture();
+    const query = {
+      productUuid: fixture.productUuid,
+      productShowing: false,
+      variantShowing: false,
+      availableMin: 0,
+      availableMax: 0,
+    };
+    const result = await service.getAll(query);
+    expect(result.meta.totalRows).toBe(1);
+    expect(result.data[0].offers).toHaveLength(1);
+    expect(result.data[0].offers[0].showing).toBe(false);
+    expect(result.data[0].offers[0].records.map((record) => record.article)).toEqual([`FILTER-HELD-${fixture.suffix}`]);
+    const detail = await service.getByUuid(fixture.uuid, query);
+    expect(detail.offers[0].records.map((record) => record.uuid)).toEqual(
+      result.data[0].offers[0].records.map((record) => record.uuid),
+    );
+    const ranges = await service.getAll({
+      productUuid: fixture.productUuid,
+      quantityMin: 3,
+      quantityMax: 5,
+      reservedMin: 0,
+      reservedMax: 1,
+      availableMin: 3,
+      availableMax: 4,
+    });
+    expect(
+      ranges.data[0].offers
+        .flatMap((offer) => offer.records)
+        .map((record) => record.article)
+        .sort(),
+    ).toEqual([`FILTER-LIVE-${fixture.suffix}`, `FILTER-LOW-${fixture.suffix}`].sort());
+    expect((await service.getAll({ productUuid: fixture.productUuid, productShowing: true })).data).toEqual([]);
+    expect((await service.getByUuid(fixture.uuid)).offers.flatMap((offer) => offer.records)).toHaveLength(4);
+    expect((await service.getOffers({ productUuid: fixture.productUuid })).data).toHaveLength(2);
+  });
+
+  it('requires variant and inventory conditions to match the same branch and record', async () => {
+    const fixture = await createFilterFixture();
+    expect(
+      (await service.getAll({ productUuid: fixture.productUuid, variantShowing: true, quantityMin: 10 })).data,
+    ).toEqual([]);
+    expect(
+      (
+        await service.getAll({
+          productUuid: fixture.productUuid,
+          variantShowing: false,
+          quantityMin: 10,
+          availableMin: 1,
+        })
+      ).data,
+    ).toEqual([]);
+    await expect(service.getByUuid(fixture.uuid, { productShowing: true })).rejects.toThrow('not found');
+    const offers = await service.getOffers({
+      productUuid: fixture.productUuid,
+      variantShowing: false,
+      availableMin: 1,
+    });
+    expect(offers.meta.totalRows).toBe(1);
+    const detail = await service.getOffer(offers.data[0].uuid, { variantShowing: false, availableMin: 1 });
+    expect(detail.offer.records.map((record) => record.article)).toEqual([`FILTER-LOW-${fixture.suffix}`]);
+    expect(detail.siblingOffers).toHaveLength(1);
+  });
+
+  it('filters owned product and variant statuses independently without hard-coded storefront rules', async () => {
+    const fixture = await createFilterFixture();
+    await source.query("UPDATE store_product SET status='disabled' WHERE uuid=$1", [fixture.uuid]);
+    await source.query("UPDATE store_offer SET status='archived' WHERE store_product_uuid=$1 AND showing=false", [
+      fixture.uuid,
+    ]);
+    const result = await service.getAll({
+      productUuid: fixture.productUuid,
+      productStatus: StoreProductStatus.DISABLED,
+      variantStatus: StoreOfferStatus.ARCHIVED,
+    });
+    expect(result.data[0].status).toBe('disabled');
+    expect(result.data[0].offers.map((offer) => offer.status)).toEqual(['archived']);
+    expect(
+      (await service.getAll({ productUuid: fixture.productUuid, productStatus: StoreProductStatus.ACTIVE })).data,
+    ).toEqual([]);
+    expect((await service.getAll({ productUuid: fixture.productUuid })).data[0].offers).toHaveLength(2);
+  });
+
+  it('searches names and articles using FTS and updates the document after renames', async () => {
+    const fixture = await createFilterFixture();
+    const query = { productUuid: fixture.productUuid };
+    expect((await service.getAll({ ...query, search: 'майками' })).data).toHaveLength(1);
+    const article = `FILTER-LIVE-${fixture.suffix}`;
+    const found = await service.getAll({ ...query, search: article.toLowerCase() });
+    expect(found.data[0].offers).toHaveLength(1);
+    expect(found.data[0].offers[0].records).toHaveLength(2);
+    expect((await service.getOffers({ ...query, search: 'красн FILTER-LIVE' })).data).toHaveLength(1);
+    expect((await service.getAll({ ...query, search: `FILTER-HELD-${fixture.suffix}`, availableMin: 1 })).data).toEqual(
+      [],
+    );
+    await source.query('UPDATE accounting_record SET article=$1 WHERE article=$2', [
+      `RENAMED-${fixture.suffix}`,
+      article,
+    ]);
+    expect((await service.getAll({ ...query, search: article })).data).toEqual([]);
+    expect((await service.getAll({ ...query, search: `RENAMED-${fixture.suffix}` })).data).toHaveLength(1);
+    await source.query("UPDATE product_snapshot SET name='Куртка' WHERE product_uuid=$1", [fixture.productUuid]);
+    expect((await service.getAll({ ...query, search: 'майками' })).data).toEqual([]);
+    expect((await service.getAll({ ...query, search: 'куртками' })).data).toHaveLength(1);
+    await source.query("UPDATE variant_snapshot SET name='Желтая' WHERE variant_uuid=$1", [
+      fixture.offers[0].variantUuid,
+    ]);
+    expect((await service.getAll({ ...query, search: 'желт' })).data).toHaveLength(1);
+    expect((await service.getAll({ ...query, search: '%_ ()' })).data).toEqual([]);
+    const indexes = await source.query(
+      "SELECT indexname FROM pg_indexes WHERE schemaname=current_schema() AND indexdef LIKE '%USING gin%'",
+    );
+    expect(indexes).toEqual([{ indexname: 'accounting_record_search_idx' }]);
+  });
+
   it('ignores legacy catalog events and parks a gap until authoritative reconciliation', async () => {
     const legacy = event(randomUUID(), 1);
     legacy.producer = 'product_srv';
@@ -350,11 +565,11 @@ describe('Accounting records in PostgreSQL', () => {
       'resolved',
     );
   });
-  it('hides archived catalog items from both storefront list and details without deleting stock', async () => {
+  it('keeps unfiltered Store reads independent of storefront catalog visibility', async () => {
     await snapshots.apply(event(productUuid, 4, 'archived'));
     const offers = await service.getOffers();
-    expect(offers.data.some((item) => item.productUuid === productUuid)).toBe(false);
-    await expect(service.getOffer(product.offers[0].uuid)).rejects.toThrow('not found');
+    expect(offers.data.some((item) => item.productUuid === productUuid)).toBe(true);
+    expect((await service.getOffer(product.offers[0].uuid)).offer.uuid).toBe(product.offers[0].uuid);
     expect((await service.getByUuid(product.uuid)).offers[0].records).toHaveLength(2);
   });
 });

@@ -1,14 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, ObjectLiteral, SelectQueryBuilder } from 'typeorm';
+import { AccountingRecordModel } from '../model/accounting-record.model';
 import { plainToInstance } from 'class-transformer';
 import { StoreProductModel } from '../model/store-product.model';
 import { StoreOfferModel } from '../model/store-offer.model';
 import { ShopSnapshotModel } from '../model/shop-snapshot.model';
 import { ProductSnapshotModel } from '../model/product-snapshot.model';
 import { PriceHistoryModel } from '../model/price-history.model';
-import { StoreProductStatus } from '../enum/store-product-status.enum';
-import { StoreOfferStatus } from '../enum/store-offer-status.enum';
 import { StoreProductEntity, StorefrontOfferEntity, StorefrontOfferDetailEntity } from '../entity';
 import { GetAllStoreProductsCommand } from '../service/command/get-all-store-products.command';
 
@@ -16,40 +15,39 @@ import { GetAllStoreProductsCommand } from '../service/command/get-all-store-pro
 export class StoreProductQueryRepository {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
   async getAll(query: GetAllStoreProductsCommand) {
-    const builder = this.buildStoreProductQuery().addOrderBy('storeProduct.createdAt', 'DESC');
-    if (query.shopUuid) builder.andWhere('storeProduct.shopUuid = :shopUuid', { shopUuid: query.shopUuid });
-    if (query.productUuid)
-      builder.andWhere('storeProduct.productUuid = :productUuid', { productUuid: query.productUuid });
-    if (query.search)
-      builder.andWhere(
-        `(productSnapshot.name ILIKE :search OR EXISTS (
-    SELECT 1 FROM store_offer searched_offer
-    JOIN variant_snapshot searched_variant ON searched_variant.variant_uuid=searched_offer.variant_uuid
-    JOIN accounting_record searched_record ON searched_record.offer_uuid=searched_offer.uuid
-    LEFT JOIN record_clarification searched_clarification ON searched_clarification.record_uuid=searched_record.uuid
-    WHERE searched_offer.store_product_uuid=storeProduct.uuid AND
-    (searched_record.article ILIKE :search OR searched_variant.name ILIKE :search OR searched_clarification.value ILIKE :search)
-  ))`,
-        { search: `%${query.search}%` },
-      );
+    const builder = this.applyFilters(this.buildStoreProductQuery(), query).addOrderBy(
+      'storeProduct.createdAt',
+      'DESC',
+    );
     const [rows, count] = await builder.getManyAndCount();
     return { data: rows.map((row) => this.toEntity(row)), meta: { totalRows: count } };
   }
-  async getByUuid(uuid: string, manager: EntityManager = this.dataSource.manager): Promise<StoreProductEntity> {
-    const row = await this.buildStoreProductQuery(manager).where('storeProduct.uuid = :uuid', { uuid }).getOne();
+
+  async getByUuid(
+    uuid: string,
+    query: GetAllStoreProductsCommand = {},
+    manager: EntityManager = this.dataSource.manager,
+  ): Promise<StoreProductEntity> {
+    const row = await this.applyFilters(this.buildStoreProductQuery(manager), query)
+      .andWhere('storeProduct.uuid = :uuid', { uuid })
+      .getOne();
     if (!row) throw new NotFoundException('Store product not found');
     return this.toEntity(row);
   }
-  async getOffers() {
-    const [rows, count] = await this.buildPublicStoreOfferQuery()
+
+  async getOffers(query: GetAllStoreProductsCommand = {}) {
+    const [rows, count] = await this.applyFilters(this.buildStoreOfferQuery(), query)
       .addOrderBy('offer.createdAt', 'DESC')
       .getManyAndCount();
     return { data: rows.map((row) => this.toOfferEntity(row)), meta: { totalRows: count } };
   }
-  async getOffer(uuid: string): Promise<StorefrontOfferDetailEntity> {
-    const row = await this.buildPublicStoreOfferQuery().andWhere('offer.uuid = :uuid', { uuid }).getOne();
+
+  async getOffer(uuid: string, query: GetAllStoreProductsCommand = {}): Promise<StorefrontOfferDetailEntity> {
+    const row = await this.applyFilters(this.buildStoreOfferQuery(), query)
+      .andWhere('offer.uuid = :uuid', { uuid })
+      .getOne();
     if (!row) throw new NotFoundException('Store variant association not found');
-    const siblings = await this.buildPublicStoreOfferQuery()
+    const siblings = await this.applyFilters(this.buildStoreOfferQuery(), query)
       .andWhere('offer.storeProductUuid = :uuid', { uuid: row.storeProductUuid })
       .addOrderBy('offer.createdAt', 'ASC')
       .getMany();
@@ -59,6 +57,52 @@ export class StoreProductQueryRepository {
       { excludeExtraneousValues: true },
     );
   }
+
+  private applyFilters<T extends ObjectLiteral>(builder: SelectQueryBuilder<T>, query: GetAllStoreProductsCommand) {
+    const fields = [
+      ['shopUuid', 'storeProduct.shopUuid'],
+      ['productUuid', 'storeProduct.productUuid'],
+      ['productStatus', 'storeProduct.status'],
+      ['productShowing', 'storeProduct.showing'],
+      ['variantStatus', 'offer.status'],
+      ['variantShowing', 'offer.showing'],
+    ] as const;
+    for (const [field, column] of fields) {
+      if (query[field] !== undefined) builder.andWhere(`${column} = :${field}`, { [field]: query[field] });
+    }
+    this.applyInventoryFilters(builder, query, 'inventory');
+    if (query.search) {
+      const records = builder
+        .subQuery()
+        .select('1')
+        .from(AccountingRecordModel, 'searchedRecord')
+        .leftJoin('searchedRecord.inventory', 'searchedInventory')
+        .where('searchedRecord.offerUuid = offer.uuid')
+        .andWhere('searchedRecord.search_vector @@ store_search_query(:search)');
+      this.applyInventoryFilters(records, query, 'searchedInventory');
+      builder.andWhere(`EXISTS ${records.getQuery()}`, { search: query.search });
+    }
+    return builder;
+  }
+
+  private applyInventoryFilters<T extends ObjectLiteral>(
+    builder: SelectQueryBuilder<T>,
+    query: GetAllStoreProductsCommand,
+    alias: string,
+  ): void {
+    const fields = [
+      ['quantity', `${alias}.quantity`],
+      ['reserved', `${alias}.reserved`],
+      ['available', `(${alias}.quantity - ${alias}.reserved)`],
+    ] as const;
+    for (const [field, column] of fields) {
+      const minimum = `${field}Min` as const;
+      const maximum = `${field}Max` as const;
+      if (query[minimum] !== undefined) builder.andWhere(`${column} >= :${minimum}`, { [minimum]: query[minimum] });
+      if (query[maximum] !== undefined) builder.andWhere(`${column} <= :${maximum}`, { [maximum]: query[maximum] });
+    }
+  }
+
   private toEntity(row: StoreProductModel): StoreProductEntity {
     return plainToInstance(StoreProductEntity, row, { excludeExtraneousValues: true });
   }
@@ -84,25 +128,25 @@ export class StoreProductQueryRepository {
         'productSnapshot',
         'productSnapshot.productUuid = storeProduct.productUuid',
       )
-      .leftJoinAndSelect('storeProduct.offers', 'offers')
-      .leftJoinAndSelect('offers.variantSnapshot', 'variantSnapshot')
-      .leftJoinAndSelect('offers.prices', 'prices')
+      .leftJoinAndSelect('storeProduct.offers', 'offer')
+      .leftJoinAndSelect('offer.variantSnapshot', 'variantSnapshot')
+      .leftJoinAndSelect('offer.prices', 'prices')
       .leftJoinAndSelect('prices.currency', 'currency')
       .leftJoinAndMapOne(
-        'offers.currentPrice',
+        'offer.currentPrice',
         PriceHistoryModel,
         'current_price',
-        'current_price.offerUuid = offers.uuid AND current_price.uuid = ' +
-          '(SELECT price.uuid FROM price_history price WHERE price.offer_uuid = offers.uuid ORDER BY price.created_at DESC, price.uuid DESC LIMIT 1)',
+        'current_price.offerUuid = offer.uuid AND current_price.uuid = ' +
+          '(SELECT price.uuid FROM price_history price WHERE price.offer_uuid = offer.uuid ORDER BY price.created_at DESC, price.uuid DESC LIMIT 1)',
       )
       .leftJoinAndSelect('current_price.currency', 'current_price_currency')
-      .leftJoinAndSelect('offers.records', 'records')
+      .leftJoinAndSelect('offer.records', 'records')
       .leftJoinAndSelect('records.clarifications', 'clarifications')
       .leftJoinAndSelect('records.inventory', 'inventory')
       .addOrderBy('records.createdAt', 'ASC')
       .addOrderBy('records.uuid', 'ASC')
       .addOrderBy('clarifications.position', 'ASC')
-      .addOrderBy('offers.createdAt', 'ASC')
+      .addOrderBy('offer.createdAt', 'ASC')
       .addOrderBy('prices.createdAt', 'DESC');
   }
 
@@ -131,17 +175,6 @@ export class StoreProductQueryRepository {
       .addOrderBy('records.createdAt', 'ASC')
       .addOrderBy('records.uuid', 'ASC')
       .addOrderBy('clarifications.position', 'ASC');
-  }
-
-  buildPublicStoreOfferQuery(manager: EntityManager = this.dataSource.manager) {
-    return this.buildStoreOfferQuery(manager)
-      .where('offer.status = :offerStatus', { offerStatus: StoreOfferStatus.ACTIVE })
-      .andWhere('offer.showing = true')
-      .andWhere('storeProduct.status = :storeProductStatus', { storeProductStatus: StoreProductStatus.ACTIVE })
-      .andWhere('storeProduct.showing = true')
-      .andWhere('productSnapshot.sourceProducer = :producer', { producer: 'product_srv_v2' })
-      .andWhere('productSnapshot.status = :snapshotStatus', { snapshotStatus: 'active' })
-      .andWhere('variantSnapshot.status = :snapshotStatus', { snapshotStatus: 'active' });
   }
 
   findByUuidWithManager(manager: EntityManager, storeProductUuid: string) {

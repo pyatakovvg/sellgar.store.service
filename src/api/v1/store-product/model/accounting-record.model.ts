@@ -21,6 +21,7 @@ import { InventoryMovementModel } from './inventory-movement.model';
 @Check('accounting_record_article_ck', 'length(btrim(article)) > 0 AND article = btrim(article)')
 @Index('accounting_record_article_uq', ['article'], { unique: true })
 @Index('accounting_record_offer_idx', ['offerUuid'])
+@Index('accounting_record_search_idx', { synchronize: false })
 export class AccountingRecordModel {
   @Generated('uuid')
   @PrimaryColumn('uuid', { default: () => 'gen_random_uuid()' })
@@ -32,6 +33,8 @@ export class AccountingRecordModel {
   offer: StoreOfferModel;
   @Column({ type: 'varchar', length: 256 })
   article: string;
+  @Column({ name: 'search_vector', type: 'tsvector', select: false, insert: false, update: false })
+  searchVector: string;
   @Column({ type: 'int', default: 1 })
   version: number;
   @OneToMany(() => RecordClarificationModel, (clarification) => clarification.record)

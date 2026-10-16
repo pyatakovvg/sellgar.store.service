@@ -38,6 +38,23 @@
 - Остатки не менять через `updateStoreProduct`. Текущее состояние хранит
   `record_inventory`, история причин хранится в `inventory_movement`; они пишутся
   вместе отдельными inventory-командами.
+- Все read-команды `store.product.getAll`/`getByUuid` и `store.offer.getAll`/`getByUuid`
+  принимают один плоский `query`: search, shopUuid, productUuid, productStatus,
+  productShowing, variantStatus, variantShowing, quantityMin/Max, reservedMin/Max,
+  availableMin/Max. Без фильтров возвращают все записи, включая скрытые и архивные.
+- Фильтры применяются SQL к одной цепочке product–offer–record и ограничивают
+  состав вложенных offers/records. Границы включительные; false и 0 не пропускаются.
+  Query карточки проверяется так же, как query списка; отсутствие совпадений дает 404.
+- Политику витрины задает client gateway, не Store. Catalog snapshot status не
+  подменяет собственный status Store; актуальность каталога проверяет BFF у владельца.
+- `search` использует PostgreSQL FTS по названиям product/variant snapshot и
+  артикулу accounting_record. Только эти поля; уточнения и описания не индексируются.
+  Один `accounting_record.search_vector` и один GIN `accounting_record_search_idx`.
+  Миграционные триггеры обновляют документ при переименованиях и новых записях.
+  Поиск поддерживает префиксы и русские словоформы; ILIKE/LIKE для поиска запрещены.
+- Поиск по артикулу отбирает соответствующую ветку варианта, сохраняя остальные
+  записи этой ветки, если числовые фильтры их не исключают. Поисковая запись сама
+  обязана удовлетворять заданным inventory-границам.
 - Внешние события применять через idempotent `inbox_event`; при `version_gap`
   или `missing_parent` писать `sync_issue`, а не применять событие вслепую.
 

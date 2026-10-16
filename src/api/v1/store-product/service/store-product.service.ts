@@ -30,18 +30,21 @@ export class StoreProductService {
     await validateOrReject(result);
     return result;
   }
-  getByUuid(uuid: string) {
-    return this.queries.getByUuid(uuid);
+  async getByUuid(uuid: string, input: GetAllStoreProductsCommand = {}) {
+    const query = await this.commands.create(GetAllStoreProductsCommand, input);
+    return this.queries.getByUuid(uuid, query);
   }
-  async getOffers() {
-    const result = plainToInstance(StorefrontOfferResultEntity, await this.queries.getOffers(), {
+  async getOffers(input: GetAllStoreProductsCommand = {}) {
+    const query = await this.commands.create(GetAllStoreProductsCommand, input);
+    const result = plainToInstance(StorefrontOfferResultEntity, await this.queries.getOffers(query), {
       excludeExtraneousValues: true,
     });
     await validateOrReject(result);
     return result;
   }
-  getOffer(uuid: string) {
-    return this.queries.getOffer(uuid);
+  async getOffer(uuid: string, input: GetAllStoreProductsCommand = {}) {
+    const query = await this.commands.create(GetAllStoreProductsCommand, input);
+    return this.queries.getOffer(uuid, query);
   }
   async create(input: CreateStoreProductCommand) {
     return this.repository.create(await this.commands.create(CreateStoreProductCommand, input));
