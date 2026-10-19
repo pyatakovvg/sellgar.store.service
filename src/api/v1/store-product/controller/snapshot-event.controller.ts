@@ -13,22 +13,22 @@ export class SnapshotEventController {
     private readonly catalogSync: CatalogSyncService,
   ) {}
 
-  @EventPattern('shop.created')
+  @EventPattern<string>('shop.created')
   applyShopCreatedEvent(@Payload() event: IntegrationEventDto, @Ctx() context: RmqContext) {
     return this.apply(event, context);
   }
 
-  @EventPattern('shop.updated')
+  @EventPattern<string>('shop.updated')
   applyShopUpdatedEvent(@Payload() event: IntegrationEventDto, @Ctx() context: RmqContext) {
     return this.apply(event, context);
   }
 
-  @EventPattern('product.created')
+  @EventPattern<string>('product.created')
   applyProductCreatedEvent(@Payload() event: IntegrationEventDto, @Ctx() context: RmqContext) {
     return this.apply(event, context);
   }
 
-  @EventPattern('product.updated')
+  @EventPattern<string>('product.updated')
   applyProductUpdatedEvent(@Payload() event: IntegrationEventDto, @Ctx() context: RmqContext) {
     return this.apply(event, context);
   }
