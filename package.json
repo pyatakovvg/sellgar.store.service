@@ -20,7 +20,8 @@
     "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
     "migration:show": "typeorm-ts-node-commonjs migration:show -d src/database/data-source.ts",
-    "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config test/jest-integration.json --runInBand"
+    "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config test/jest-integration.json --runInBand",
+    "seed:categories": "ts-node src/database/seeds/seed-categories.ts"
   },
   "dependencies": {
     "@nestjs/common": "12.2.0",

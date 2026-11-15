@@ -1,3 +1,5 @@
+import { Unique } from 'typeorm';
+import { StoreProductCategoryModel } from './store-product-category.model';
 import {
   Column,
   CreateDateColumn,
@@ -19,7 +21,11 @@ import { ShopSnapshotModel } from './shop-snapshot.model';
 
 @Index(['uuid', 'productUuid'], { unique: true })
 @Entity('store_product')
+@Unique('store_product_uuid_shop_uq', ['uuid', 'shopUuid'])
 export class StoreProductModel {
+  @OneToMany(() => StoreProductCategoryModel, (link) => link.storeProduct)
+  categoryLinks: StoreProductCategoryModel[];
+
   @Generated('uuid')
   @PrimaryColumn('uuid', { name: 'uuid', default: () => 'gen_random_uuid()' })
   uuid: string;

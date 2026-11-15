@@ -1,5 +1,8 @@
+import { StoreProductCategoryModel } from '../api/v1/store-product/model/store-product-category.model';
 import { join } from 'node:path';
 import { DataSourceOptions } from 'typeorm';
+
+import { CategoryModel } from '../api/v1/category/model/category.model';
 import { StoreOfferModel } from '../api/v1/store-product/model/store-offer.model';
 import { ProductSnapshotModel } from '../api/v1/store-product/model/product-snapshot.model';
 import { RecordClarificationModel } from '../api/v1/store-product/model/record-clarification.model';
@@ -31,10 +34,12 @@ export class StoreDatabaseOptions {
       schema,
       extra: { options: `-c search_path=${schema},public` },
       entities: [
+        CategoryModel,
         StoreOfferModel,
         ProductSnapshotModel,
         RecordClarificationModel,
         StoreProductModel,
+        StoreProductCategoryModel,
         RecordInventoryModel,
         VariantSnapshotModel,
         CommandRequestModel,

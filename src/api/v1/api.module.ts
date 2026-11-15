@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 
+import { CategoryModule } from './category/category.module';
 import { CurrencyModule } from './currency/currency.module';
 import { StoreProductModule } from './store-product/store-product.module';
 import { STORE_EVENT_SERVICE } from './store-product/service/outbox-relay.service';
@@ -61,6 +62,7 @@ import { STORE_EVENT_SERVICE } from './store-product/service/outbox-relay.servic
         },
       ],
     }),
+    CategoryModule,
     CurrencyModule,
     StoreProductModule,
   ],

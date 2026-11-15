@@ -1,3 +1,4 @@
+import { StoreProductCategoryRepository } from '../src/api/v1/store-product/repository/store-product-category.repository';
 import 'reflect-metadata';
 import { beforeAll, afterAll, describe, it, expect } from '@jest/globals';
 import { randomUUID } from 'node:crypto';
@@ -75,12 +76,13 @@ describe('Accounting records in PostgreSQL', () => {
     await source.runMigrations();
     const commands = new CommandRequestRepository(source),
       events = new StoreEventRepository(),
-      queries = new StoreProductQueryRepository(source);
+      queries = new StoreProductQueryRepository(source, new StoreProductCategoryRepository());
     const repository = new StoreProductRepository(
       commands,
       new StoreOfferRepository(new AccountingRecordRepository()),
       queries,
       events,
+      new StoreProductCategoryRepository(),
     );
     service = new StoreProductService(
       repository,

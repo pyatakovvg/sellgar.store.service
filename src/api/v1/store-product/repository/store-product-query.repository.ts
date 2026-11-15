@@ -11,9 +11,14 @@ import { PriceHistoryModel } from '../model/price-history.model';
 import { StoreProductEntity, StorefrontOfferEntity, StorefrontOfferDetailEntity } from '../entity';
 import { GetAllStoreProductsCommand } from '../service/command/get-all-store-products.command';
 
+import { StoreProductCategoryRepository } from './store-product-category.repository';
+
 @Injectable()
 export class StoreProductQueryRepository {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly categories: StoreProductCategoryRepository,
+  ) {}
   async getAll(query: GetAllStoreProductsCommand) {
     const builder = this.applyFilters(this.buildStoreProductQuery(), query).addOrderBy(
       'storeProduct.createdAt',
@@ -53,7 +58,11 @@ export class StoreProductQueryRepository {
       .getMany();
     return plainToInstance(
       StorefrontOfferDetailEntity,
-      { offer: this.toOfferEntity(row), siblingOffers: siblings.map((item) => this.toOfferEntity(item)) },
+      {
+        offer: this.toOfferEntity(row),
+        siblingOffers: siblings.map((item) => this.toOfferEntity(item)),
+        categories: await this.categories.getPaths(this.dataSource.manager, row.storeProductUuid),
+      },
       { excludeExtraneousValues: true },
     );
   }
@@ -104,7 +113,11 @@ export class StoreProductQueryRepository {
   }
 
   private toEntity(row: StoreProductModel): StoreProductEntity {
-    return plainToInstance(StoreProductEntity, row, { excludeExtraneousValues: true });
+    return plainToInstance(
+      StoreProductEntity,
+      { ...row, categoryUuids: row.categoryLinks.map((link) => link.categoryUuid).sort() },
+      { excludeExtraneousValues: true },
+    );
   }
   private toOfferEntity(row: StoreOfferModel): StorefrontOfferEntity {
     return plainToInstance(
@@ -128,6 +141,7 @@ export class StoreProductQueryRepository {
         'productSnapshot',
         'productSnapshot.productUuid = storeProduct.productUuid',
       )
+      .leftJoinAndSelect('storeProduct.categoryLinks', 'categoryLinks')
       .leftJoinAndSelect('storeProduct.offers', 'offer')
       .leftJoinAndSelect('offer.variantSnapshot', 'variantSnapshot')
       .leftJoinAndSelect('offer.prices', 'prices')

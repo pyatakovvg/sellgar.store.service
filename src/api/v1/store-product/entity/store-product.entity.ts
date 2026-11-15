@@ -1,3 +1,5 @@
+import { Transform } from 'class-transformer';
+import { ArrayUnique } from 'class-validator';
 import { Expose, Type } from 'class-transformer';
 import {
   IsUUID,
@@ -16,6 +18,13 @@ import { StoreOfferEntity } from './store-offer.entity';
 import { StoreProductStatus } from '../enum/store-product-status.enum';
 
 export class StoreProductEntity {
+  @Expose()
+  @Transform(({ value }) => (value === undefined ? [] : value))
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID('all', { each: true })
+  categoryUuids: string[];
+
   @Expose()
   @IsUUID()
   uuid: string;

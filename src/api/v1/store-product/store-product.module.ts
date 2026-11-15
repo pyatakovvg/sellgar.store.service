@@ -1,3 +1,4 @@
+import { StoreProductCategoryRepository } from './repository/store-product-category.repository';
 import { CommandFactory } from './service/command/command.factory';
 import { StoreEventRepository } from './repository/store-event.repository';
 import { CommandRequestRepository } from './repository/command-request.repository';
@@ -56,6 +57,7 @@ import { VariantSnapshotModel } from './model/variant-snapshot.model';
     StoreOfferRepository,
     AccountingRecordRepository,
     StoreProductRepository,
+    StoreProductCategoryRepository,
     StoreProductService,
     SnapshotEventService,
     OutboxRepository,

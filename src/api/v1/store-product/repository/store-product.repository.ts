@@ -1,3 +1,4 @@
+import { StoreProductCategoryRepository } from './store-product-category.repository';
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { EntityManager } from 'typeorm';
@@ -21,6 +22,7 @@ export class StoreProductRepository {
     private readonly offers: StoreOfferRepository,
     private readonly queries: StoreProductQueryRepository,
     private readonly events: StoreEventRepository,
+    private readonly categories: StoreProductCategoryRepository,
   ) {}
   create(command: CreateStoreProductCommand) {
     return this.commands.execute(command, 'store.product.create', StoreProductEntity, async (manager) => {
@@ -33,6 +35,7 @@ export class StoreProductRepository {
         showing: command.showing,
       });
       await this.offers.synchronize(manager, uuid, command.productUuid, command.offers);
+      await this.categories.synchronize(manager, uuid, command.shopUuid, command.categoryUuids ?? []);
       return this.complete(manager, uuid, 'store.product.created');
     });
   }
@@ -51,6 +54,8 @@ export class StoreProductRepository {
         { showing: command.showing ?? current.showing, version: () => 'version + 1' },
       );
       if (command.offers) await this.offers.synchronize(manager, current.uuid, current.productUuid, command.offers);
+      if (command.categoryUuids !== undefined)
+        await this.categories.synchronize(manager, current.uuid, current.shopUuid, command.categoryUuids);
       return this.complete(manager, current.uuid, 'store.product.updated');
     });
   }

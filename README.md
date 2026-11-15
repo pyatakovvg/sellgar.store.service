@@ -48,7 +48,7 @@ RMQ patterns:
 - store.product.update: `{ commandId, uuid, expectedVersion, showing?, offers? }`;
 - store.product.archive: `{ commandId, uuid, expectedVersion }`;
 - store.offer.getAll: `{}` — только доступные для витрины связи;
-- store.offer.getByUuid: `{ uuid }` — связь с учетными записями и соседние варианты;
+- store.offer.getByUuid: `{ uuid }` — связь с учетными записями, соседние варианты и категории товара;
 - store.inventory.receipt / writeOff / adjust:
   `{ commandId, recordUuid, expectedVersion, quantity, reason?, sourceUuid?, createdBy? }`;
 - store.catalog.synchronize: `{ productUuid }` — один запрос актуального снимка у каталога.
@@ -138,3 +138,67 @@ yarn test:integration
 схему в настроенной базе. Проверяют миграцию, FK, учет, rollback, идемпотентность,
 конкурентные записи, уточнения, фильтры и обработку событий. Доступ к PostgreSQL
 обязателен; рабочие таблицы public тесты не очищают.
+
+## Дерево категорий магазина
+
+Store владеет категориями. `store.category.getTree` принимает `{ shopUuid }` и
+возвращает `{ shopUuid, nodes }`. Дерево полное, без пагинации; корни находятся в
+`nodes`, непосредственные потомки — в `children`, у листьев `children: []`.
+Узел: uuid, version, shopUuid, parentUuid (null у корня), name, description
+(string|null), sortOrder, createdAt/updatedAt (ISO), children. Порядок соседей:
+`sortOrder`, затем UUID. Одинаковые названия в разных ветках допустимы.
+
+Схема создаётся миграцией `CreateCategoryTree1794733200000`. Composite FK не
+разрешает родителя из другого магазина. Удаление родителя с детьми запрещено.
+Названия среди соседей уникальны без учёта регистра; крайние пробелы запрещены.
+Неизвестный shop snapshot даёт 404, существующий магазин без категорий — пустое
+дерево. Повреждённое дерево (цикл/пропавший родитель) не выдаётся частично.
+
+Команды карточки:
+
+- `store.category.getByUuid`: `{ uuid }` → отдельная Category без children.
+- `store.category.create`: `{ commandId, shopUuid, parentUuid, name, description }`.
+- `store.category.update`: `{ commandId, uuid, expectedVersion, parentUuid, name, description }`.
+
+ParentUuid и description обязательны, допускают null. Название обрезается по краям,
+должно содержать 1–512 символов. ShopUuid неизменяем. Создание и смена родителя
+добавляют узел в конец соседей. Правка сохраняет все поля атомарно и повышает version.
+Повтор commandId возвращает сохранённый результат; иной запрос с тем же ID и
+устаревшая версия дают 409. Дубли названия среди соседей дают 409; чужой родитель
+и цикл — 400. Все изменения дерева одного магазина сериализуются advisory lock;
+проверка предков выполняется под этой блокировкой, включая конкурентные переносы.
+Category write и outbox `store.category.created`/`store.category.updated` фиксируются
+вместе. Создание и редактирование не требуют новой миграции.
+
+Удаление, отдельное управление порядком, привязка к store_product и проекция путей
+для хлебных крошек будут реализованы отдельно.
+
+Для локальных примеров после `yarn migration:run`:
+
+```bash
+yarn seed:categories <shopUuid>
+```
+
+Seed требует существующий shop snapshot, добавляет примеры глубиной от одного
+до пяти уровней в одной транзакции. Если у магазина уже есть категории, ничего
+не меняет. При запуске сервиса примеры автоматически не создаются.
+
+### Категории продаваемого товара
+
+`store.product.create/update` принимают `categoryUuids?: string[]`. Создание без поля
+означает отсутствие категорий; PATCH без поля сохраняет набор, `[]` снимает все
+привязки. Read model и outbox возвращают `categoryUuids: string[]`. Допускаются
+только конечные категории того же магазина. Связи хранятся в `store_product_category`
+с составными FK по магазину. Версия, связи, остальные поля и событие сохраняются
+атомарно; commandId обеспечивает повтор команды.
+
+Чтобы добавить подкатегорию в используемый товарами лист, сначала перенесите
+привязки товаров. Общая блокировка shopUuid защищает правило от гонки с сохранением товара.
+
+### Категории в карточке витрины
+
+`store.offer.getByUuid` возвращает `categories: { categoryUuid, items: { uuid, name }[] }[]`
+рядом с `offer` и `siblingOffers`. Каждая назначенная конечная категория содержит полный
+путь от корня до листа. Имена и родители берутся из текущего дерева Store при чтении;
+без привязок возвращается `[]`. Привязки принадлежат Store Product и общие для его вариантов.
+`categoryUuids` в командах записи и административной модели остаётся массивом UUID.

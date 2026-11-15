@@ -1,3 +1,4 @@
+import { ValidateIf } from 'class-validator';
 import { Expose, Type } from 'class-transformer';
 import {
   IsUUID,
@@ -13,6 +14,13 @@ import {
 import { StoreOfferInputCommand } from './store-offer-input.command';
 
 export class UpdateStoreProductCommand {
+  @Expose()
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID('all', { each: true })
+  categoryUuids?: string[];
+
   @Expose()
   @IsUUID()
   commandId: string;
