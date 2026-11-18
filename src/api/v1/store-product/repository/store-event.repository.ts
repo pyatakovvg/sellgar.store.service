@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { instanceToPlain } from 'class-transformer';
 import { EntityManager } from 'typeorm';
-import { randomUUID } from 'node:crypto';
-import { OutboxEventModel } from '../model/outbox-event.model';
+import { OutboxWriter } from '@sellgar/outbox';
 
 @Injectable()
 export class StoreEventRepository {
+  constructor(private readonly outbox: OutboxWriter) {}
+
   add(
     manager: EntityManager,
     aggregateType: string,
@@ -14,17 +15,13 @@ export class StoreEventRepository {
     eventType: string,
     payload: object,
   ) {
-    return manager.insert(OutboxEventModel, {
-      uuid: randomUUID(),
-      producer: 'store_srv',
+    return this.outbox.add(manager, {
       aggregateType,
-      aggregateUuid,
+      aggregateId: aggregateUuid,
       aggregateVersion,
       eventType,
       schemaVersion: 2,
       payload: instanceToPlain(payload),
-      status: 'pending',
-      attempts: 0,
     });
   }
 }

@@ -1,3 +1,5 @@
+import { OutboxWriter } from '@sellgar/outbox';
+import { STORE_OUTBOX_OPTIONS } from '../src/integration/outbox/store-outbox.options';
 import { CategoryCommandRepository } from '../src/api/v1/category/repository/category-command.repository';
 import { CommandRequestRepository } from '../src/api/v1/store-product/repository/command-request.repository';
 import { StoreEventRepository } from '../src/api/v1/store-product/repository/store-event.repository';
@@ -39,7 +41,10 @@ describe('Category trees in PostgreSQL', () => {
     await source.runMigrations();
     service = new CategoryService(
       new CategoryRepository(source),
-      new CategoryCommandRepository(new CommandRequestRepository(source), new StoreEventRepository()),
+      new CategoryCommandRepository(
+        new CommandRequestRepository(source),
+        new StoreEventRepository(new OutboxWriter(STORE_OUTBOX_OPTIONS)),
+      ),
       new CommandFactory(),
     );
     await source.query(

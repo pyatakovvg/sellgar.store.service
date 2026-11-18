@@ -1,3 +1,5 @@
+import { OutboxWriter } from '@sellgar/outbox';
+import { STORE_OUTBOX_OPTIONS } from '../src/integration/outbox/store-outbox.options';
 import { StoreProductCategoryRepository } from '../src/api/v1/store-product/repository/store-product-category.repository';
 import 'reflect-metadata';
 import { beforeAll, afterAll, describe, it, expect } from '@jest/globals';
@@ -75,7 +77,7 @@ describe('Accounting records in PostgreSQL', () => {
     ).initialize();
     await source.runMigrations();
     const commands = new CommandRequestRepository(source),
-      events = new StoreEventRepository(),
+      events = new StoreEventRepository(new OutboxWriter(STORE_OUTBOX_OPTIONS)),
       queries = new StoreProductQueryRepository(source, new StoreProductCategoryRepository());
     const repository = new StoreProductRepository(
       commands,
@@ -111,10 +113,20 @@ describe('Accounting records in PostgreSQL', () => {
     expect(product.offers[0]).not.toHaveProperty('article');
     expect(product.offers[0].records).toHaveLength(1);
     expect(product.offers[0].records[0].article).toMatch(/^SKU-/);
+    expect(product.offers[0].records[0].order).toBe(0);
     expect(product.offers[0].records[0].clarifications).toEqual([]);
     expect(product.offers[0].records[0].inventory.quantity).toBe(0);
     expect(product.offers[0].currentPrice.value).toBe('125.50');
   });
+  it('resolves a full Store Product by accounting record UUID without storefront filters', async () => {
+    const record = product.offers[0].records[0];
+    const result = await service.getByRecordUuid(record.uuid);
+    expect(result.uuid).toBe(product.uuid);
+    expect(result.offers[0].records[0].uuid).toBe(record.uuid);
+    expect(result.offers[0].records[0].inventory.available).toBe(0);
+    await expect(service.getByRecordUuid(randomUUID())).rejects.toThrow('Accounting record not found');
+  });
+
   it('concretizes the initial record and adds another without copying stock', async () => {
     const record = product.offers[0].records[0];
     await service.receiptInventory({
@@ -141,6 +153,7 @@ describe('Accounting records in PostgreSQL', () => {
       ],
     });
     expect(product.offers[0].records).toHaveLength(2);
+    expect(product.offers[0].records.map((record) => record.order)).toEqual([0, 1]);
     const small = product.offers[0].records.find((item) => item.article === 'BLUE-S');
     const large = product.offers[0].records.find((item) => item.article === 'BLUE-L');
     expect(small.inventory.quantity).toBe(12);
@@ -166,6 +179,58 @@ describe('Accounting records in PostgreSQL', () => {
     expect(outbox.payload.recordUuid).toBe(record.uuid);
     await expect(service.receiptInventory({ ...command, quantity: 7 })).rejects.toThrow('Command id was already used');
   });
+  it('persists explicit record order in reads and events without changing identity or inventory', async () => {
+    const offer = product.offers[0];
+    const before = await service.getByUuid(product.uuid);
+    const records = before.offers[0].records;
+    const update = (inputs: { uuid: string; order?: number; article?: string }[]) =>
+      service.update({
+        commandId: randomUUID(),
+        uuid: product.uuid,
+        expectedVersion: product.version,
+        offers: [
+          {
+            uuid: offer.uuid,
+            variantUuid,
+            showing: true,
+            currentPrice: { value: '125.50', currencyCode: 'RUB' },
+            records: inputs,
+          },
+        ],
+      });
+    const expected = [...records].reverse().map((record) => record.uuid);
+    product = await update(records.map((record, index) => ({ uuid: record.uuid, order: records.length - index - 1 })));
+    expect(product.offers[0].records.map((record) => record.uuid)).toEqual(expected);
+    expect(product.offers[0].records.map((record) => record.order)).toEqual([0, 1]);
+    for (const record of product.offers[0].records) {
+      const previous = records.find((item) => item.uuid === record.uuid);
+      expect(record.article).toBe(previous.article);
+      expect(record.inventory).toEqual(previous.inventory);
+    }
+    const detail = await service.getOffer(offer.uuid, { availableMin: 1 });
+    const list = await service.getOffers({ availableMin: 1 });
+    expect(detail.offer.records.map((record) => record.uuid)).toEqual(expected);
+    expect(list.data.find((item) => item.uuid === offer.uuid).records.map((record) => record.uuid)).toEqual(expected);
+    const [outbox] = await source.query(
+      'SELECT payload FROM outbox_event WHERE aggregate_uuid=$1 AND aggregate_version=$2',
+      [product.uuid, product.version],
+    );
+    expect(outbox.payload.offers[0].records.map((record) => record.uuid)).toEqual(expected);
+    expect(outbox.payload.offers[0].records.map((record) => record.order)).toEqual([0, 1]);
+
+    product = await update([{ uuid: records[0].uuid, article: records[0].article }]);
+    expect(product.offers[0].records.map((record) => record.uuid)).toEqual(expected);
+    await expect(update(records.map((record) => ({ uuid: record.uuid, order: 0 })))).rejects.toThrow(
+      'order occurs twice',
+    );
+    await expect(update([{ uuid: records[0].uuid, order: -1 }])).rejects.toBeDefined();
+    await expect(update([{ uuid: records[0].uuid, order: 0.5 }])).rejects.toBeDefined();
+    expect((await service.getByUuid(product.uuid)).version).toBe(product.version);
+    await expect(
+      source.query('UPDATE accounting_record SET "order"=0 WHERE offer_uuid=$1', [offer.uuid]),
+    ).rejects.toThrow();
+  });
+
   it('rejects stale writes and overdraw without a movement or stock change', async () => {
     const record = product.offers[0].records.find((item) => item.article === 'BLUE-L');
     await expect(

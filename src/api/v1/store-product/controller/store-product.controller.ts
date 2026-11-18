@@ -7,6 +7,7 @@ import { ArchiveStoreProductDto } from './dto/archive-store-product.dto';
 import { RecordInventoryDto } from './dto/record-inventory.dto';
 import { AdjustRecordInventoryDto } from './dto/adjust-record-inventory.dto';
 import { GetAllStoreProductsDto } from './dto/get-all-store-products.dto';
+import { GetProductByRecordDto } from './dto/get-product-by-record.dto';
 
 @Controller()
 export class StoreProductController {
@@ -24,6 +25,11 @@ export class StoreProductController {
   ) {
     return this.service.getByUuid(uuid, query);
   }
+  @MessagePattern({ cmd: 'store.product.getByRecordUuid' })
+  getByRecordUuid(@Payload() dto: GetProductByRecordDto) {
+    return this.service.getByRecordUuid(dto.recordUuid);
+  }
+
   @MessagePattern({ cmd: 'store.offer.getAll' }) getOffers(@Payload('query') query: GetAllStoreProductsDto) {
     return this.service.getOffers(query);
   }

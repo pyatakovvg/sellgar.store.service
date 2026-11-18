@@ -1,5 +1,5 @@
 import { Expose, Type } from 'class-transformer';
-import { IsUUID, IsDate, ValidateNested, IsNumber, IsString, IsArray, IsDefined } from 'class-validator';
+import { IsUUID, IsDate, ValidateNested, IsNumber, IsString, IsInt, Min, IsArray, IsDefined } from 'class-validator';
 import { RecordInventoryEntity } from './record-inventory.entity';
 import { RecordClarificationEntity } from './record-clarification.entity';
 
@@ -13,6 +13,11 @@ export class AccountingRecordEntity {
   @Expose()
   @IsString()
   article: string;
+
+  @Expose()
+  @IsInt()
+  @Min(0)
+  order: number;
   @Expose()
   @IsNumber()
   version: number;

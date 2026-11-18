@@ -1,0 +1,4 @@
+[submodule "library/sellgar.outbox.library"]
+	path = library/sellgar.outbox.library
+	url = git@github.com:pyatakovvg/sellgar.outbox.library.git
+	branch = master

@@ -21,14 +21,23 @@ export class SnapshotEventService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   async apply(event: IntegrationEventDto) {
-    await this.dataSource.transaction(async (manager) => {
+    return this.dataSource.transaction(async (manager) => {
       await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
         `${event.producer}:${event.aggregateType}:${event.aggregateId}`,
       ]);
       const existing = await manager.findOne(InboxEventModel, { where: { eventUuid: event.eventUuid } });
 
       if (existing?.status === 'processed' || existing?.status === 'ignored') {
-        return;
+        return existing.status;
+      }
+
+      if (
+        existing?.status === 'parked' &&
+        event.producer === 'product_srv_v2' &&
+        event.aggregateType === 'product' &&
+        event.schemaVersion === 3
+      ) {
+        return 'parked';
       }
 
       let status: EventApplyStatus = 'ignored';
@@ -44,6 +53,8 @@ export class SnapshotEventService {
       }
 
       await this.recordInboxEvent(manager, event, status, existing?.attempts ?? 0);
+
+      return status;
     });
   }
 

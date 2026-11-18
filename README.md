@@ -8,7 +8,7 @@ Store владеет связями магазина с каталогом, уч
 ```text
 store_product (shop_uuid, product_uuid)
   └─ store_offer (variant_uuid, цена)
-       ├─ accounting_record (uuid, уникальный article)
+       ├─ accounting_record (uuid, уникальный article, order внутри оффера)
        │    ├─ record_clarification (position, value)
        │    └─ record_inventory (quantity, reserved, version)
        └─ accounting_record ...
@@ -44,6 +44,8 @@ RMQ patterns:
 
 - store.product.getAll: `{ query: { search?, shopUuid?, productUuid? } }`;
 - store.product.getByUuid: `{ uuid }`;
+- store.product.getByRecordUuid: `{ recordUuid }` — полный Store Product по учетной записи,
+  включая скрытые/архивные связи и нулевые остатки; внутреннее восстановление проекций Cart.
 - store.product.create: `{ commandId, shopUuid, productUuid, showing, offers }`;
 - store.product.update: `{ commandId, uuid, expectedVersion, showing?, offers? }`;
 - store.product.archive: `{ commandId, uuid, expectedVersion }`;
@@ -62,8 +64,8 @@ RMQ patterns:
     "showing": true,
     "currentPrice": { "value": "1500.00", "currencyCode": "RUB" },
     "records": [
-      { "article": "BLUE-S", "clarifications": [{ "value": "S евростандарт" }] },
-      { "article": "BLUE-L", "clarifications": [{ "value": "L евростандарт" }] }
+      { "article": "BLUE-S", "order": 0, "clarifications": [{ "value": "S евростандарт" }] },
+      { "article": "BLUE-L", "order": 1, "clarifications": [{ "value": "L евростандарт" }] }
     ]
   }
 ]
@@ -202,3 +204,35 @@ Seed требует существующий shop snapshot, добавляет �
 путь от корня до листа. Имена и родители берутся из текущего дерева Store при чтении;
 без привязок возвращается `[]`. Привязки принадлежат Store Product и общие для его вариантов.
 `categoryUuids` в командах записи и административной модели остаётся массивом UUID.
+
+### Порядок событий и восстановление Product
+
+OutboxModule и OutboxWriter предоставляет общая workspace-библиотека `@sellgar/outbox`
+из nested submodule `library/sellgar.outbox.library`. ApiV1Module регистрирует модуль
+один раз с STORE_OUTBOX_OPTIONS; StoreEventRepository формирует payload/schemaVersion
+и передаёт текущий EntityManager writer. Локальных relay/repository нет. `yarn build`
+сначала собирает библиотеку. Таблица и миграции по-прежнему принадлежат Store.
+
+Outbox публикует изменения каждого `(producer, aggregateType, aggregateUuid)` по
+`aggregateVersion`. Неопубликованная младшая версия блокирует следующие, включая
+ожидание retry и terminal `dead`; другие агрегаты продолжают работу. Relay
+выбирает следующую версию после публикации предыдущей, в пределах общего batchSize.
+Исчерпанные retry требуют восстановления оператором, а не пропуска события.
+
+Product schemaVersion=3 consumer при разрыве версий сохраняет `sync_issue` и
+запрашивает полный актуальный снимок через существующий `CatalogSyncService`.
+ACK выполняется после восстановления; ошибка приводит к NACK/requeue. Повтор
+parked-события снова требует recovery, даже если уже пришёл предшественник.
+Снимок не откатывает более новую проекцию и атомарно закрывает покрытые issues
+и parked inbox-записи. Публичные контракты событий не меняются.
+
+Проверки в отдельных временных схемах PostgreSQL:
+
+```bash
+yarn test:integration outbox-ordering
+yarn test:integration snapshot-recovery
+```
+
+### Порядок учётных записей
+
+`records[].order` — неотрицательное целое, уникальное внутри оффера. Чтение всегда возвращает записи по нему, без сортировки размеров или текста уточнений. PATCH может переставлять существующие UUID, не затрагивая их остатки. Если order не передан, существующее значение сохраняется; новая запись добавляется после последней. Дубли порядка отклоняются атомарно. Миграция `AccountingRecordOrder1795000000000` заполняет начальные значения для существующих записей, не меняя их текущую последовательность. Дальше последовательностью управляет администратор.

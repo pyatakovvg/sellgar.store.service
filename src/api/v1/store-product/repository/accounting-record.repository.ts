@@ -15,18 +15,33 @@ export class AccountingRecordRepository {
   ): Promise<void> {
     const existing = await manager.findBy(AccountingRecordModel, { offerUuid });
     const records = inputs ?? (existing.length ? [] : [{}]);
+    const existingByUuid = new Map(existing.map((record) => [record.uuid, record]));
     const seen = new Set<string>();
-    for (const input of records) {
+    let nextOrder =
+      Math.max(-1, ...existing.map((record) => record.order), ...records.map((record) => record.order ?? -1)) + 1;
+    const prepared = records.map((input) => {
       if (input.uuid && seen.has(input.uuid)) throw new ConflictException('Accounting record occurs twice');
       if (input.uuid) seen.add(input.uuid);
+      const current = input.uuid ? existingByUuid.get(input.uuid) : undefined;
+      if (input.uuid && !current)
+        throw new ConflictException('Accounting record does not belong to this variant association');
+
+      return { input, order: input.order ?? current?.order ?? nextOrder++ };
+    });
+    const orders = [
+      ...existing.filter((record) => !seen.has(record.uuid)).map((record) => record.order),
+      ...prepared.map((record) => record.order),
+    ];
+    if (new Set(orders).size !== orders.length) throw new ConflictException('Accounting record order occurs twice');
+
+    for (const { input, order } of prepared) {
       let record: AccountingRecordModel;
       if (input.uuid) {
-        record = await manager.findOneBy(AccountingRecordModel, { uuid: input.uuid, offerUuid });
-        if (!record) throw new ConflictException('Accounting record does not belong to this variant association');
+        record = existingByUuid.get(input.uuid)!;
         await manager.update(
           AccountingRecordModel,
           { uuid: record.uuid, offerUuid },
-          { article: input.article ?? record.article, version: () => 'version + 1' },
+          { article: input.article ?? record.article, order, version: () => 'version + 1' },
         );
       } else {
         const recordUuid = randomUUID();
@@ -34,6 +49,7 @@ export class AccountingRecordRepository {
           uuid: recordUuid,
           offerUuid,
           article: input.article ?? `SKU-${recordUuid}`,
+          order,
         });
         await manager.insert(RecordInventoryModel, { recordUuid, quantity: 0, reserved: 0 });
         record = await manager.findOneByOrFail(AccountingRecordModel, { uuid: recordUuid });

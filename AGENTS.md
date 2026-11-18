@@ -58,6 +58,8 @@
   обязана удовлетворять заданным inventory-границам.
 - Внешние события применять через idempotent `inbox_event`; при `version_gap`
   или `missing_parent` писать `sync_issue`, а не применять событие вслепую.
+- При разрыве версий Product consumer вызывает существующий CatalogSyncService и восстанавливает полный снимок у Product service до ACK. Ошибка восстановления приводит к NACK/requeue; `synchronizeProduct` закрывает покрытые снимком sync_issue и parked inbox-записи. Порядок доставки событий не должен оставлять проекцию навсегда устаревшей.
+- Повтор parked Product-события снова требует восстановления, даже если предшественник уже применён. Иначе неудавшийся recovery может закончиться ACK без закрытия остальных разрывов. Проверка: `yarn test:integration snapshot-recovery` использует только временную схему PostgreSQL.
 
 ## Проверка
 
@@ -69,7 +71,14 @@ yarn build
 Изменения схемы выполняются явными миграциями, synchronize отключен. Сверяйте
 контракты и примеры команд с README.md. Product snapshot принимает только
 product_srv_v2 schemaVersion=3. Bootstrap: один Nest-контекст с двумя RMQ-очередями, без HTTP listen.
-Outbox relay создается один раз; его claim и retry-механизм сохраняются.
+OutboxModule из @sellgar/outbox подключается один раз в ApiV1Module. Общий пакет
+в library/sellgar.outbox.library владеет writer, repository, relay, retry, timeout
+и метриками. В сервисе остаются STORE_OUTBOX_OPTIONS и доменный StoreEventRepository,
+передающий событие OutboxWriter с текущим EntityManager. Локальные копии relay/repository запрещены.
+Порядок публикации внутри `(producer, aggregateType, aggregateUuid)` определяется
+`aggregateVersion`. Любой неопубликованный предшественник, включая dead/backoff,
+блокирует последующие версии. Разные агрегаты не блокируют друг друга. Relay
+повторяет claim в пределах суммарного batchSize; порядок UPDATE RETURNING не используется.
 
 ## Категории товара Store
 
@@ -78,3 +87,8 @@ Outbox relay создается один раз; его claim и retry-меха�
 - Все изменения, версия и outbox фиксируются одной транзакцией. Чужие категории, ветви и дубли отклоняются.
 - Связи находятся в store_product_category, composite FK проверяют общий shopUuid.
 - Категории, назначенные товарам, нельзя превращать в ветви до переноса привязок. Записи категорий и привязок сериализуются общей блокировкой магазина.
+
+## Порядок учётных записей
+
+- `AccountingRecord.order` — неотрицательное целое, уникальное внутри оффера. Store возвращает records по order; дата и UUID не задают отображение.
+- Metadata-команда принимает order у записи; отсутствие сохраняет текущий порядок, новая запись без order добавляется в конец. Перестановка сохраняется атомарно с версией Store Product и событием; идентичность и остатки не меняются.

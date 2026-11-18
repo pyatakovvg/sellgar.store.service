@@ -1585,6 +1585,21 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@sellgar/outbox@npm:0.0.1, @sellgar/outbox@workspace:library/sellgar.outbox.library":
+  version: 0.0.0-use.local
+  resolution: "@sellgar/outbox@workspace:library/sellgar.outbox.library"
+  dependencies:
+    typescript: "npm:6.0.3"
+  peerDependencies:
+    "@nestjs/common": ^11.0.0 || ^12.0.0
+    "@nestjs/config": ^4.0.0 || ^12.0.0
+    "@nestjs/microservices": ^11.0.0 || ^12.0.0
+    "@nestjs/typeorm": ^11.0.0 || ^12.0.0
+    rxjs: 7.8.2
+    typeorm: ^1.0.0
+  languageName: unknown
+  linkType: soft
+
 "@service/store@workspace:.":
   version: 0.0.0-use.local
   resolution: "@service/store@workspace:."
@@ -1598,6 +1613,7 @@ __metadata:
     "@nestjs/schematics": "npm:12.0.7"
     "@nestjs/testing": "npm:12.2.0"
     "@nestjs/typeorm": "npm:12.0.2"
+    "@sellgar/outbox": "npm:0.0.1"
     "@types/amqplib": "npm:0.10.8"
     "@types/jest": "npm:30.0.0"
     "@types/node": "npm:26.6.5"

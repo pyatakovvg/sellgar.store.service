@@ -11,6 +11,7 @@ import {
   PrimaryColumn,
   Generated,
   UpdateDateColumn,
+  Unique,
 } from 'typeorm';
 import { StoreOfferModel } from './store-offer.model';
 import { RecordClarificationModel } from './record-clarification.model';
@@ -18,6 +19,8 @@ import { RecordInventoryModel } from './record-inventory.model';
 import { InventoryMovementModel } from './inventory-movement.model';
 
 @Entity('accounting_record')
+@Check('accounting_record_order_ck', '"order" >= 0')
+@Unique('accounting_record_offer_order_uq', ['offerUuid', 'order'], { deferrable: 'INITIALLY DEFERRED' })
 @Check('accounting_record_article_ck', 'length(btrim(article)) > 0 AND article = btrim(article)')
 @Index('accounting_record_article_uq', ['article'], { unique: true })
 @Index('accounting_record_offer_idx', ['offerUuid'])
@@ -33,6 +36,8 @@ export class AccountingRecordModel {
   offer: StoreOfferModel;
   @Column({ type: 'varchar', length: 256 })
   article: string;
+  @Column({ type: 'int' })
+  order: number;
   @Column({ name: 'search_vector', type: 'tsvector', select: false, insert: false, update: false })
   searchVector: string;
   @Column({ type: 'int', default: 1 })

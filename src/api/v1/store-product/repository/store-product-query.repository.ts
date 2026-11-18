@@ -40,6 +40,20 @@ export class StoreProductQueryRepository {
     return this.toEntity(row);
   }
 
+  async getByRecordUuid(recordUuid: string): Promise<StoreProductEntity> {
+    const [row]: { uuid: string }[] = await this.dataSource.query(
+      `SELECT offer.store_product_uuid AS uuid
+       FROM accounting_record record
+       JOIN store_offer offer ON offer.uuid = record.offer_uuid
+       WHERE record.uuid = $1`,
+      [recordUuid],
+    );
+    if (!row) throw new NotFoundException('Accounting record not found');
+
+    // Internal synchronization read includes hidden and archived records.
+    return this.getByUuid(row.uuid);
+  }
+
   async getOffers(query: GetAllStoreProductsCommand = {}) {
     const [rows, count] = await this.applyFilters(this.buildStoreOfferQuery(), query)
       .addOrderBy('offer.createdAt', 'DESC')
@@ -157,8 +171,7 @@ export class StoreProductQueryRepository {
       .leftJoinAndSelect('offer.records', 'records')
       .leftJoinAndSelect('records.clarifications', 'clarifications')
       .leftJoinAndSelect('records.inventory', 'inventory')
-      .addOrderBy('records.createdAt', 'ASC')
-      .addOrderBy('records.uuid', 'ASC')
+      .addOrderBy('records.order', 'ASC')
       .addOrderBy('clarifications.position', 'ASC')
       .addOrderBy('offer.createdAt', 'ASC')
       .addOrderBy('prices.createdAt', 'DESC');
@@ -186,8 +199,7 @@ export class StoreProductQueryRepository {
       .leftJoinAndSelect('offer.records', 'records')
       .leftJoinAndSelect('records.clarifications', 'clarifications')
       .leftJoinAndSelect('records.inventory', 'inventory')
-      .addOrderBy('records.createdAt', 'ASC')
-      .addOrderBy('records.uuid', 'ASC')
+      .addOrderBy('records.order', 'ASC')
       .addOrderBy('clarifications.position', 'ASC');
   }
 

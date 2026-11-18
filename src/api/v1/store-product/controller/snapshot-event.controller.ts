@@ -42,7 +42,17 @@ export class SnapshotEventController {
     const channel = context.getChannelRef();
     const message = context.getMessage();
     try {
-      await this.snapshotEventService.apply(event);
+      const status = await this.snapshotEventService.apply(event);
+
+      if (
+        status === 'parked' &&
+        event.producer === 'product_srv_v2' &&
+        event.aggregateType === 'product' &&
+        event.schemaVersion === 3
+      ) {
+        await this.catalogSync.synchronize(event.aggregateId);
+      }
+
       channel.ack(message);
     } catch (error) {
       channel.nack(message, false, true);

@@ -1,5 +1,15 @@
 import { Expose, Type, Transform } from 'class-transformer';
-import { IsUUID, IsString, IsOptional, IsArray, ValidateNested, MinLength, MaxLength } from 'class-validator';
+import {
+  IsUUID,
+  IsString,
+  IsOptional,
+  IsInt,
+  Min,
+  IsArray,
+  ValidateNested,
+  MinLength,
+  MaxLength,
+} from 'class-validator';
 import { RecordClarificationCommand } from './record-clarification.command';
 
 export class AccountingRecordInputCommand {
@@ -14,6 +24,12 @@ export class AccountingRecordInputCommand {
   @MinLength(1)
   @MaxLength(256)
   article?: string;
+
+  @Expose()
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  order?: number;
   @Expose()
   @IsOptional()
   @IsArray()

@@ -5,7 +5,8 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { CategoryModule } from './category/category.module';
 import { CurrencyModule } from './currency/currency.module';
 import { StoreProductModule } from './store-product/store-product.module';
-import { STORE_EVENT_SERVICE } from './store-product/service/outbox-relay.service';
+import { OutboxModule } from '@sellgar/outbox';
+import { STORE_OUTBOX_OPTIONS } from '../../integration/outbox/store-outbox.options';
 
 @Module({
   imports: [
@@ -34,7 +35,7 @@ import { STORE_EVENT_SERVICE } from './store-product/service/outbox-relay.servic
           }),
         },
         {
-          name: STORE_EVENT_SERVICE,
+          name: STORE_OUTBOX_OPTIONS.eventClientToken,
           imports: [ConfigModule],
           inject: [ConfigService],
           useFactory: (config: ConfigService) => ({
@@ -62,6 +63,7 @@ import { STORE_EVENT_SERVICE } from './store-product/service/outbox-relay.servic
         },
       ],
     }),
+    OutboxModule.forRoot(STORE_OUTBOX_OPTIONS),
     CategoryModule,
     CurrencyModule,
     StoreProductModule,

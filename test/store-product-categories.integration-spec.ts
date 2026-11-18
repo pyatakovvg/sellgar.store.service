@@ -1,3 +1,5 @@
+import { OutboxWriter } from '@sellgar/outbox';
+import { STORE_OUTBOX_OPTIONS } from '../src/integration/outbox/store-outbox.options';
 import { CategoryService } from '../src/api/v1/category/service/category.service';
 import { CategoryRepository } from '../src/api/v1/category/repository/category.repository';
 import { CategoryCommandRepository } from '../src/api/v1/category/repository/category-command.repository';
@@ -84,7 +86,7 @@ describe('Store product category assignments in PostgreSQL', () => {
     ).initialize();
     await source.runMigrations();
     const commands = new CommandRequestRepository(source),
-      events = new StoreEventRepository(),
+      events = new StoreEventRepository(new OutboxWriter(STORE_OUTBOX_OPTIONS)),
       queries = new StoreProductQueryRepository(source, new StoreProductCategoryRepository());
     const repository = new StoreProductRepository(
       commands,

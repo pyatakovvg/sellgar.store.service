@@ -34,6 +34,10 @@ export class StoreProductService {
     const query = await this.commands.create(GetAllStoreProductsCommand, input);
     return this.queries.getByUuid(uuid, query);
   }
+  getByRecordUuid(recordUuid: string) {
+    return this.queries.getByRecordUuid(recordUuid);
+  }
+
   async getOffers(input: GetAllStoreProductsCommand = {}) {
     const query = await this.commands.create(GetAllStoreProductsCommand, input);
     const result = plainToInstance(StorefrontOfferResultEntity, await this.queries.getOffers(query), {
