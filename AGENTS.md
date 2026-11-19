@@ -70,9 +70,9 @@ yarn build
 
 Изменения схемы выполняются явными миграциями, synchronize отключен. Сверяйте
 контракты и примеры команд с README.md. Product snapshot принимает только
-product_srv_v2 schemaVersion=3. Bootstrap: один Nest-контекст с двумя RMQ-очередями, без HTTP listen.
+product_srv_v2 schemaVersion=3. Bootstrap: один Nest-контекст с двумя RMQ-очередями и внутренним health HTTP на 8080.
 OutboxModule из @sellgar/outbox подключается один раз в ApiV1Module. Общий пакет
-в library/sellgar.outbox.library владеет writer, repository, relay, retry, timeout
+в code/library/sellgar.outbox.library владеет writer, repository, relay, retry, timeout
 и метриками. В сервисе остаются STORE_OUTBOX_OPTIONS и доменный StoreEventRepository,
 передающий событие OutboxWriter с текущим EntityManager. Локальные копии relay/repository запрещены.
 Порядок публикации внутри `(producer, aggregateType, aggregateUuid)` определяется
@@ -92,3 +92,13 @@ OutboxModule из @sellgar/outbox подключается один раз в Ap
 
 - `AccountingRecord.order` — неотрицательное целое, уникальное внутри оффера. Store возвращает records по order; дата и UUID не задают отображение.
 - Metadata-команда принимает order у записи; отсутствие сохраняет текущий порядок, новая запись без order добавляется в конец. Перестановка сохраняется атомарно с версией Store Product и событием; идентичность и остатки не меняются.
+
+## Деплой
+
+- Рабочая ветка — `development`, выпуск — `master`; без запроса новые ветки не создавать.
+- Yarn root, исходники, tests и nested outbox находятся в `code/`; команды выше выполнять оттуда.
+- В корне находятся Dockerfile, `.github/` CI и `helm/` values. Общий chart — в infrastructure.
+- ConfigMap приложения монтирует `.env`; credentials приходят из Secret env refs.
+- Внутренние container/Service: 8080, без Ingress. `/health` проверяет PostgreSQL и оба RMQ-consumer.
+- CI проверяет unit/integration tests на временной PostgreSQL 16; финальный runtime не содержит БД или test tooling.
+- Миграционный Job предшествует Deployment. Локальные данные и env в Git/образ не включать.

@@ -1,0 +1,18 @@
+replicas: 1
+configmaps:
+- nameOverride: store-service-env
+  enabled: true
+  filename: .env
+  data: |
+    PORT=8080
+    DATABASE_HOST=postgresql-rw
+    DATABASE_PORT=5432
+    DATABASE_DATABASE_NAME=store_srv
+    STORE_DATABASE_SCHEMA=public
+    AMQP_HOSTNAME=rabbitmq
+    AMQP_PORT=5672
+    AMQP_STORE_SRV_COMMAND_QUEUE=store_srv.command.queue
+    AMQP_STORE_SRV_EVENT_QUEUE=store_srv.event.queue
+    AMQP_EVENTS_EXCHANGE=event.exchange
+    PRODUCT_V2_COMMAND_QUEUE=product.v2.commands
+    OUTBOX_PUBLISH_INTERVAL_MS=250

@@ -22,14 +22,15 @@ lerna-debug.log*
 
 # Tests
 /coverage
+/code/coverage
 /.nyc_output
 
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/sdks
-!.yarn/versions
+code/.yarn/*
+!code/.yarn/patches
+!code/.yarn/plugins
+!code/.yarn/releases
+!code/.yarn/sdks
+!code/.yarn/versions
 
 .project
 .classpath

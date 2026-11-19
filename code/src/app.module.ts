@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { HealthModule } from './health/health.module';
 import { ApiV1Module } from './api/v1/api.module';
 import { StoreDatabaseOptions } from './database/store-database.options';
 
@@ -8,6 +9,7 @@ import { StoreDatabaseOptions } from './database/store-database.options';
   imports: [
     ConfigModule.forRoot({ envFilePath: './.env', isGlobal: true }),
     TypeOrmModule.forRootAsync({ useFactory: () => StoreDatabaseOptions.create(process.env) }),
+    HealthModule,
     ApiV1Module,
   ],
 })

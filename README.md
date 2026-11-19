@@ -92,7 +92,7 @@ variantUuid, showing и currentPrice; нельзя перенести его в 
 По согласованию с пользователем от 2026-10-12 bootstrap использует один
 Nest-контекст с двумя RMQ microservices: очередь команд и очередь событий.
 Сервисы, пул PostgreSQL и outbox relay создаются один раз. Штатный hybrid bootstrap
-требует platform-express, но HTTP-порт не открывается. Outbox relay использует
+требует platform-express, но внутренний HTTP health доступен на PORT (default 8080). Outbox relay использует
 прежний claim с FOR UPDATE SKIP LOCKED.
 События подтверждаются ack после завершения inbox-транзакции.
 
@@ -126,7 +126,7 @@ yarn start:dev
 ```
 
 Конфигурация описана в .env.example. PRODUCT_V2_COMMAND_QUEUE должен совпадать с
-очередью текущего Product service. HTTP-порт Store не открывает.
+очередью текущего Product service. Доменные команды остаются в RMQ; внутренний `/health` проверяет БД и оба consumer.
 
 ## Проверка
 
@@ -208,7 +208,7 @@ Seed требует существующий shop snapshot, добавляет �
 ### Порядок событий и восстановление Product
 
 OutboxModule и OutboxWriter предоставляет общая workspace-библиотека `@sellgar/outbox`
-из nested submodule `library/sellgar.outbox.library`. ApiV1Module регистрирует модуль
+из nested submodule `code/library/sellgar.outbox.library`. ApiV1Module регистрирует модуль
 один раз с STORE_OUTBOX_OPTIONS; StoreEventRepository формирует payload/schemaVersion
 и передаёт текущий EntityManager writer. Локальных relay/repository нет. `yarn build`
 сначала собирает библиотеку. Таблица и миграции по-прежнему принадлежат Store.
@@ -236,3 +236,31 @@ yarn test:integration snapshot-recovery
 ### Порядок учётных записей
 
 `records[].order` — неотрицательное целое, уникальное внутри оффера. Чтение всегда возвращает записи по нему, без сортировки размеров или текста уточнений. PATCH может переставлять существующие UUID, не затрагивая их остатки. Если order не передан, существующее значение сохраняется; новая запись добавляется после последней. Дубли порядка отклоняются атомарно. Миграция `AccountingRecordOrder1795000000000` заполняет начальные значения для существующих записей, не меняя их текущую последовательность. Дальше последовательностью управляет администратор.
+
+
+## CI и Kubernetes
+
+Yarn root, `src`, `test` и `library` находятся внутри `code/`. Команды из разделов
+выше выполнять из `code/`. Dockerfile, `.github/` и `helm/` — в корне.
+`helm/values.app.yaml` содержит общую конфигурацию; `helm/dev/values.yaml` — одну
+реплику и ConfigMap `.env`. Общие templates принадлежат infrastructure/chart application.
+Prod values заполняются при подключении prod, который сейчас не развёрнут.
+
+Node 24 production image содержит compiled service, общую outbox-библиотеку и
+production dependencies. PostgreSQL 16 используется только в verifier stage для
+unit/integration tests. Production-image smoke запускается из корня:
+`python3 .github/scripts/smoke-image.py <image>`; он использует отдельные временные
+PostgreSQL/RabbitMQ, без рабочих volumes. Проверяются пять миграций и повторный
+запуск, snapshots/inbox, категории, цена, учётные записи, остатки, идемпотентность,
+409, FTS и outbox. Отключение проверочного RabbitMQ переводит health в 503.
+
+В Kubernetes внутренний container/Service 8080; публичного Ingress нет. База/роль
+`store_srv` приходят от CloudNativePG, credentials — Secret `store-database`.
+`.env` монтируется в `/app/.env`; RabbitMQ — Secret `rabbitmq-default-user`.
+Миграционный Job запускает `node --env-file=.env node_modules/typeorm/cli.js -d
+ dist/database/data-source.js migration:run` до Deployment. Synchronize отключён.
+
+Ветки и релизный цикл: `development` → CI/GHCR; `release/*` → проверка выпуска;
+production promotion запускается вручную с сохранением проверенного digest.
+Первичное восстановление dev-проекций из уже опубликованных сохранённых событий
+владельцев описывается в infrastructure. Это не импорт локальных баз.

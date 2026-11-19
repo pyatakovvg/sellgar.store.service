@@ -2,6 +2,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
+import { HealthService } from './health/health.service';
 import { AppModule } from './app.module';
 import { RpcHttpExceptionFilter } from './common/rpc-http-exception.filter';
 
@@ -19,7 +20,7 @@ async function bootstrap(): Promise<void> {
       password: config.getOrThrow<string>('AMQP_PASSWORD'),
     },
   ];
-  app.connectMicroservice<MicroserviceOptions>(
+  const commands = app.connectMicroservice<MicroserviceOptions>(
     {
       transport: Transport.RMQ,
       options: {
@@ -31,7 +32,7 @@ async function bootstrap(): Promise<void> {
     },
     { inheritAppConfig: true },
   );
-  app.connectMicroservice<MicroserviceOptions>(
+  const events = app.connectMicroservice<MicroserviceOptions>(
     {
       transport: Transport.RMQ,
       options: {
@@ -47,8 +48,20 @@ async function bootstrap(): Promise<void> {
     },
     { inheritAppConfig: true },
   );
+  const health = app.get(HealthService);
+  commands.status.subscribe((status) => {
+    health.setConsumerConnected('commands', status === 'connected' || status === 'unblocked');
+  });
+  events.status.subscribe((status) => {
+    health.setConsumerConnected('events', status === 'connected' || status === 'unblocked');
+  });
+  const port = Number(config.get('PORT') ?? '8080');
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('PORT must be a valid TCP port');
+  }
   await app.init();
   await app.startAllMicroservices();
+  await app.listen(port);
   Logger.log('Store service started', 'Bootstrap');
 }
 void bootstrap().catch((error) => {
