@@ -1,9 +1,34 @@
+import { PriceHistoryEntity } from './price-history.entity';
 import { Expose, Type } from 'class-transformer';
-import { IsUUID, IsDate, ValidateNested, IsNumber, IsString, IsInt, Min, IsArray, IsDefined } from 'class-validator';
+import {
+  IsUUID,
+  IsDate,
+  ValidateNested,
+  IsNumber,
+  IsString,
+  IsInt,
+  Min,
+  IsArray,
+  IsDefined,
+  IsOptional,
+} from 'class-validator';
 import { RecordInventoryEntity } from './record-inventory.entity';
 import { RecordClarificationEntity } from './record-clarification.entity';
 
 export class AccountingRecordEntity {
+  @Expose()
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PriceHistoryEntity)
+  currentPrice: PriceHistoryEntity | null;
+
+  @Expose()
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PriceHistoryEntity)
+  prices?: PriceHistoryEntity[];
+
   @Expose()
   @IsUUID()
   uuid: string;

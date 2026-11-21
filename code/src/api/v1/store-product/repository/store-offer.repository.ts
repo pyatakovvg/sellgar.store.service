@@ -2,7 +2,6 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { randomUUID } from 'node:crypto';
 import { EntityManager } from 'typeorm';
 import { StoreOfferModel } from '../model/store-offer.model';
-import { PriceHistoryModel } from '../model/price-history.model';
 import { VariantSnapshotModel } from '../model/variant-snapshot.model';
 import { StoreOfferInputCommand } from '../service/command/store-offer-input.command';
 import { AccountingRecordRepository } from './accounting-record.repository';
@@ -44,16 +43,6 @@ export class StoreOfferRepository {
           variantUuid: input.variantUuid,
           showing: input.showing,
         });
-      const [integer, fraction = ''] = input.currentPrice.value.split('.');
-      const value = `${integer.replace(/^0+(?=\d)/, '')}.${fraction.padEnd(2, '0')}`;
-      const current = await manager.findOne(PriceHistoryModel, {
-        where: { offerUuid },
-        order: { createdAt: 'DESC', uuid: 'DESC' },
-      });
-      if (!current || current.value !== value || current.currencyCode !== input.currentPrice.currencyCode) {
-        if (current) await manager.update(PriceHistoryModel, { uuid: current.uuid }, { endsAt: new Date() });
-        await manager.insert(PriceHistoryModel, { offerUuid, value, currencyCode: input.currentPrice.currencyCode });
-      }
       await this.records.synchronize(manager, offerUuid, input.records);
     }
   }

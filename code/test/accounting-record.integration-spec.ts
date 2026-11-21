@@ -42,7 +42,7 @@ describe('Accounting records in PostgreSQL', () => {
     shopUuid,
     productUuid,
     showing: true,
-    offers: [{ variantUuid, showing: true, currentPrice: { value: '125.5', currencyCode: 'RUB' } }],
+    offers: [{ variantUuid, showing: true, records: [{ currentPrice: { value: '125.5', currencyCode: 'RUB' } }] }],
   });
   const event = (
     uuid: string,
@@ -107,7 +107,7 @@ describe('Accounting records in PostgreSQL', () => {
     const changes = await source.driver.createSchemaBuilder().log();
     expect(changes.upQueries.map((query) => query.query)).toEqual([]);
   });
-  it('creates one default record and no parent articles', async () => {
+  it('creates one priced record and no parent articles', async () => {
     product = await service.create(input());
     expect(product).not.toHaveProperty('article');
     expect(product.offers[0]).not.toHaveProperty('article');
@@ -116,7 +116,7 @@ describe('Accounting records in PostgreSQL', () => {
     expect(product.offers[0].records[0].order).toBe(0);
     expect(product.offers[0].records[0].clarifications).toEqual([]);
     expect(product.offers[0].records[0].inventory.quantity).toBe(0);
-    expect(product.offers[0].currentPrice.value).toBe('125.50');
+    expect(product.offers[0].records[0].currentPrice.value).toBe('125.50');
   });
   it('resolves a full Store Product by accounting record UUID without storefront filters', async () => {
     const record = product.offers[0].records[0];
@@ -144,10 +144,19 @@ describe('Accounting records in PostgreSQL', () => {
           uuid: product.offers[0].uuid,
           variantUuid,
           showing: true,
-          currentPrice: { value: '125.50', currencyCode: 'RUB' },
+
           records: [
-            { uuid: record.uuid, article: 'BLUE-S', clarifications: [{ value: 'S евростандарт' }] },
-            { article: 'BLUE-L', clarifications: [{ value: 'L евростандарт' }] },
+            {
+              currentPrice: { value: '125.50', currencyCode: 'RUB' },
+              uuid: record.uuid,
+              article: 'BLUE-S',
+              clarifications: [{ value: 'S евростандарт' }],
+            },
+            {
+              currentPrice: { value: '125.50', currencyCode: 'RUB' },
+              article: 'BLUE-L',
+              clarifications: [{ value: 'L евростандарт' }],
+            },
           ],
         },
       ],
@@ -160,6 +169,61 @@ describe('Accounting records in PostgreSQL', () => {
     expect(large.inventory.quantity).toBe(0);
     expect(small.clarifications[0]).toMatchObject({ value: 'S евростандарт' });
     expect(small.clarifications[0]).not.toHaveProperty('name');
+  });
+  it('prices records independently, keeps their histories and summarizes only matching records', async () => {
+    const offer = product.offers[0];
+    const small = offer.records.find((record) => record.article === 'BLUE-S')!;
+    const large = offer.records.find((record) => record.article === 'BLUE-L')!;
+    const originalPrice = small.currentPrice!.uuid;
+    const command = {
+      commandId: randomUUID(),
+      uuid: product.uuid,
+      expectedVersion: product.version,
+      offers: [
+        {
+          uuid: offer.uuid,
+          variantUuid,
+          showing: true,
+          records: [{ uuid: large.uuid, currentPrice: { value: '200', currencyCode: 'RUB' } }],
+        },
+      ],
+    };
+    product = await service.update(command);
+    expect(product.offers[0].records.find((record) => record.uuid === small.uuid)!.currentPrice!.uuid).toBe(
+      originalPrice,
+    );
+    const updated = product.offers[0].records.find((record) => record.uuid === large.uuid)!;
+    expect(updated.currentPrice!.value).toBe('200.00');
+    expect(updated.prices!.map((price) => price.value)).toEqual(['200.00', '125.50']);
+    expect(updated.prices![1].endsAt).not.toBeNull();
+    expect(updated.inventory).toEqual(large.inventory);
+    expect((await service.update(command)).version).toBe(product.version);
+    expect((await service.getOffer(offer.uuid)).offer.priceRange).toMatchObject({ min: '125.50', max: '200.00' });
+    expect((await service.getOffer(offer.uuid, { availableMin: 1 })).offer.priceRange).toMatchObject({
+      min: '125.50',
+      max: '125.50',
+    });
+    const [outbox] = await source.query(
+      'SELECT schema_version,payload FROM outbox_event WHERE aggregate_uuid=$1 AND aggregate_version=$2',
+      [product.uuid, product.version],
+    );
+    expect(outbox.schema_version).toBe(3);
+    expect(outbox.payload.offers[0]).not.toHaveProperty('currentPrice');
+    expect(
+      outbox.payload.offers[0].records.find((record: { uuid: string }) => record.uuid === large.uuid).currentPrice
+        .value,
+    ).toBe('200.00');
+    product = await service.update({
+      ...command,
+      commandId: randomUUID(),
+      expectedVersion: product.version,
+      offers: [
+        {
+          ...command.offers[0],
+          records: [{ uuid: large.uuid, currentPrice: { value: '125.50', currencyCode: 'RUB' } }],
+        },
+      ],
+    });
   });
   it('applies simultaneous duplicate commands once and stores an inventory outbox event', async () => {
     const record = product.offers[0].records.find((item) => item.article === 'BLUE-L');
@@ -193,8 +257,8 @@ describe('Accounting records in PostgreSQL', () => {
             uuid: offer.uuid,
             variantUuid,
             showing: true,
-            currentPrice: { value: '125.50', currencyCode: 'RUB' },
-            records: inputs,
+
+            records: inputs.map((record) => ({ ...record, currentPrice: { value: '125.50', currencyCode: 'RUB' } })),
           },
         ],
       });
@@ -276,9 +340,13 @@ describe('Accounting records in PostgreSQL', () => {
           uuid: product.offers[0].uuid,
           variantUuid,
           showing: true,
-          currentPrice: { value: '125.50', currencyCode: 'RUB' },
+
           records: [
-            { uuid: record.uuid, clarifications: [{ value: 'L евростандарт' }, { value: 'Подарочная упаковка' }] },
+            {
+              currentPrice: { value: '125.50', currencyCode: 'RUB' },
+              uuid: record.uuid,
+              clarifications: [{ value: 'L евростандарт' }, { value: 'Подарочная упаковка' }],
+            },
           ],
         },
       ],
@@ -294,7 +362,13 @@ describe('Accounting records in PostgreSQL', () => {
   it('rejects duplicate articles and changes to a record owned by another association atomically', async () => {
     const other = await service.create({
       ...input(),
-      offers: [{ variantUuid: secondVariantUuid, showing: true, currentPrice: { value: '150', currencyCode: 'RUB' } }],
+      offers: [
+        {
+          variantUuid: secondVariantUuid,
+          showing: true,
+          records: [{ currentPrice: { value: '150', currencyCode: 'RUB' } }],
+        },
+      ],
     });
     const otherRecord = other.offers[0].records[0];
     const modify = (records: object[]) => ({
@@ -306,8 +380,8 @@ describe('Accounting records in PostgreSQL', () => {
           uuid: product.offers[0].uuid,
           variantUuid,
           showing: true,
-          currentPrice: { value: '125.50', currencyCode: 'RUB' },
-          records,
+
+          records: records.map((record) => ({ ...record, currentPrice: { value: '125.50', currencyCode: 'RUB' } })),
         },
       ],
     });
@@ -338,7 +412,13 @@ describe('Accounting records in PostgreSQL', () => {
     await expect(
       service.create({
         ...input(),
-        offers: [{ variantUuid: otherVariant, showing: true, currentPrice: { value: '1', currencyCode: 'RUB' } }],
+        offers: [
+          {
+            variantUuid: otherVariant,
+            showing: true,
+            records: [{ currentPrice: { value: '1', currencyCode: 'RUB' } }],
+          },
+        ],
       }),
     ).rejects.toThrow('another product');
     await expect(
@@ -405,11 +485,19 @@ describe('Accounting records in PostgreSQL', () => {
         {
           variantUuid: catalogVariantUuid,
           showing: true,
-          currentPrice: { value: '125.50', currencyCode: 'RUB' },
+
           records: [
-            { article: 'AVAILABLE', clarifications: [{ value: 'Доступная' }] },
-            { article: 'EMPTY', clarifications: [] },
-            { article: 'RESERVED', clarifications: [{ value: 'Полностью зарезервирована' }] },
+            {
+              currentPrice: { value: '125.50', currencyCode: 'RUB' },
+              article: 'AVAILABLE',
+              clarifications: [{ value: 'Доступная' }],
+            },
+            { currentPrice: { value: '125.50', currencyCode: 'RUB' }, article: 'EMPTY', clarifications: [] },
+            {
+              currentPrice: { value: '125.50', currencyCode: 'RUB' },
+              article: 'RESERVED',
+              clarifications: [{ value: 'Полностью зарезервирована' }],
+            },
           ],
         },
       ],
@@ -458,19 +546,31 @@ describe('Accounting records in PostgreSQL', () => {
         {
           variantUuid: red,
           showing: true,
-          currentPrice: { value: '10', currencyCode: 'RUB' },
+
           records: [
-            { article: `FILTER-LIVE-${suffix}`, clarifications: [{ value: 'Есть' }] },
-            { article: `FILTER-ZERO-${suffix}`, clarifications: [] },
+            {
+              currentPrice: { value: '10', currencyCode: 'RUB' },
+              article: `FILTER-LIVE-${suffix}`,
+              clarifications: [{ value: 'Есть' }],
+            },
+            {
+              currentPrice: { value: '10', currencyCode: 'RUB' },
+              article: `FILTER-ZERO-${suffix}`,
+              clarifications: [],
+            },
           ],
         },
         {
           variantUuid: blue,
           showing: false,
-          currentPrice: { value: '10', currencyCode: 'RUB' },
+
           records: [
-            { article: `FILTER-HELD-${suffix}`, clarifications: [] },
-            { article: `FILTER-LOW-${suffix}`, clarifications: [] },
+            {
+              currentPrice: { value: '10', currencyCode: 'RUB' },
+              article: `FILTER-HELD-${suffix}`,
+              clarifications: [],
+            },
+            { currentPrice: { value: '10', currencyCode: 'RUB' }, article: `FILTER-LOW-${suffix}`, clarifications: [] },
           ],
         },
       ],

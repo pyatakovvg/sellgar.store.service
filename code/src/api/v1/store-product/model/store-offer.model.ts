@@ -12,7 +12,6 @@ import {
 } from 'typeorm';
 
 import { AccountingRecordModel } from './accounting-record.model';
-import { PriceHistoryModel } from './price-history.model';
 import { StoreProductModel } from './store-product.model';
 import { StoreOfferStatus } from '../enum/store-offer-status.enum';
 import { VariantSnapshotModel } from './variant-snapshot.model';
@@ -56,9 +55,6 @@ export class StoreOfferModel {
 
   @Column({ name: 'showing', type: 'boolean', default: true })
   showing: boolean;
-
-  @OneToMany(() => PriceHistoryModel, (price) => price.offer)
-  prices: PriceHistoryModel[];
 
   @OneToMany(() => AccountingRecordModel, (record) => record.offer)
   records: AccountingRecordModel[];

@@ -20,7 +20,7 @@ export class StoreEventRepository {
       aggregateId: aggregateUuid,
       aggregateVersion,
       eventType,
-      schemaVersion: 2,
+      schemaVersion: aggregateType === 'store_product' ? 3 : 2,
       payload: instanceToPlain(payload),
     });
   }

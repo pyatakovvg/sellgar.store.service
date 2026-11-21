@@ -10,9 +10,16 @@ import {
   MinLength,
   MaxLength,
 } from 'class-validator';
+import { PriceCommand } from './price.command';
 import { RecordClarificationCommand } from './record-clarification.command';
 
 export class AccountingRecordInputCommand {
+  @Expose()
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PriceCommand)
+  currentPrice?: PriceCommand;
+
   @Expose()
   @IsOptional()
   @IsUUID()

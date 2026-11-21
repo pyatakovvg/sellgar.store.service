@@ -13,6 +13,7 @@ import {
   UpdateDateColumn,
   Unique,
 } from 'typeorm';
+import { PriceHistoryModel } from './price-history.model';
 import { StoreOfferModel } from './store-offer.model';
 import { RecordClarificationModel } from './record-clarification.model';
 import { RecordInventoryModel } from './record-inventory.model';
@@ -44,6 +45,9 @@ export class AccountingRecordModel {
   version: number;
   @OneToMany(() => RecordClarificationModel, (clarification) => clarification.record)
   clarifications: RecordClarificationModel[];
+  @OneToMany(() => PriceHistoryModel, (price) => price.record)
+  prices: PriceHistoryModel[];
+  currentPrice?: PriceHistoryModel | null;
   @OneToOne(() => RecordInventoryModel, (inventory) => inventory.record)
   inventory: RecordInventoryModel;
   @OneToMany(() => InventoryMovementModel, (movement) => movement.record)

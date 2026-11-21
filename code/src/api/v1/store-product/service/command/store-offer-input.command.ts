@@ -1,9 +1,13 @@
 import { Expose, Type } from 'class-transformer';
-import { IsUUID, IsOptional, IsBoolean, IsArray, ArrayMinSize, ValidateNested } from 'class-validator';
-import { PriceCommand } from './price.command';
+import { IsUUID, IsOptional, IsBoolean, IsArray, ArrayMinSize, ValidateNested, IsEmpty } from 'class-validator';
 import { AccountingRecordInputCommand } from './accounting-record-input.command';
 
 export class StoreOfferInputCommand {
+  // Reject the former wire field explicitly rather than silently accepting an old editor.
+  @Expose()
+  @IsEmpty({ message: 'Price belongs to an accounting record' })
+  currentPrice?: never;
+
   @Expose()
   @IsOptional()
   @IsUUID()
@@ -11,10 +15,6 @@ export class StoreOfferInputCommand {
   @Expose()
   @IsUUID()
   variantUuid: string;
-  @Expose()
-  @ValidateNested()
-  @Type(() => PriceCommand)
-  currentPrice: PriceCommand;
   @Expose()
   @IsBoolean()
   showing: boolean;

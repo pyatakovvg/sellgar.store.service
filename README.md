@@ -7,9 +7,10 @@ Store владеет связями магазина с каталогом, уч
 
 ```text
 store_product (shop_uuid, product_uuid)
-  └─ store_offer (variant_uuid, цена)
+  └─ store_offer (variant_uuid)
        ├─ accounting_record (uuid, уникальный article, order внутри оффера)
        │    ├─ record_clarification (position, value)
+       │    ├─ price_history (record_uuid, value, currency_code)
        │    └─ record_inventory (quantity, reserved, version)
        └─ accounting_record ...
 ```
@@ -27,7 +28,7 @@ store_product (shop_uuid, product_uuid)
 Это техническое правило данной реализации; отдельный бизнес-формат артикула
 RFC пока не определяет.
 
-Цена остается на store_offer: перенос цены на учетную запись не утвержден.
+Цена и полная история принадлежат accounting_record. У store_offer нет общей редактируемой цены.
 PostgreSQL хранит numeric(12,2), API — decimal string, например `"1500.00"`.
 Quantity и reserved — целые числа. Дробный учет и партии не реализованы.
 У store_product и store_offer нет article и нет общего редактируемого остатка.
@@ -62,21 +63,23 @@ RMQ patterns:
   {
     "variantUuid": "UUID варианта из product_srv_v2",
     "showing": true,
-    "currentPrice": { "value": "1500.00", "currencyCode": "RUB" },
     "records": [
-      { "article": "BLUE-S", "order": 0, "clarifications": [{ "value": "S евростандарт" }] },
-      { "article": "BLUE-L", "order": 1, "clarifications": [{ "value": "L евростандарт" }] }
+      { "currentPrice": { "value": "1500.00", "currencyCode": "RUB" }, "article": "BLUE-S", "order": 0, "clarifications": [{ "value": "S евростандарт" }] },
+      { "currentPrice": { "value": "1700.00", "currencyCode": "RUB" }, "article": "BLUE-L", "order": 1, "clarifications": [{ "value": "L евростандарт" }] }
     ]
   }
 ]
 ```
 
-Можно не передавать records — будет одна запись по умолчанию. Пустой records
-запрещен. Для изменения существующего offer или record передается его uuid;
+Новая связь требует хотя бы одну запись с currentPrice. Пустой records запрещен.
+При правке records можно не передавать — существующие записи сохранятся. Для изменения существующего offer или record передается его uuid;
 без uuid создается новый. При update не перечисленные записи сохраняются.
 clarifications не переданы — сохраняются; `[]` — очищаются; массив — заменяет
 уточнения с сохранением указанного порядка. Для существующего offer нужны
-variantUuid, showing и currentPrice; нельзя перенести его в другой товар.
+variantUuid и showing; нельзя перенести его в другой товар.
+Цена редактируется только через records[].currentPrice. Отсутствие цены у существующей
+записи сохраняет её текущее значение; новая запись без цены отклоняется.
+Устаревший offers[].currentPrice явно отклоняется, а не распространяется на все записи.
 
 Приход и списание используют положительную quantity, корректировка — целевой
 остаток, включая ноль. expectedVersion относится к record_inventory.version,
@@ -106,7 +109,7 @@ store.catalog.synchronize выполняет единственный authoritat
 
 Создание, изменение и архивирование карточки сохраняют прежние patterns:
 store.product.created, store.product.updated и store.product.archived.
-Payload нового Store-контракта имеет schemaVersion=2.
+Payload Store Product имеет schemaVersion=3, Inventory — schemaVersion=2.
 Для остатков pattern store.inventory.updated с aggregateType=record_inventory:
 payload содержит recordUuid и текущие quantity/reserved/available/version.
 Storefront list и detail исключают архивированные товары и варианты каталога,
@@ -264,3 +267,13 @@ PostgreSQL/RabbitMQ, без рабочих volumes. Проверяются пя�
 production promotion запускается вручную с сохранением проверенного digest.
 Первичное восстановление dev-проекций из уже опубликованных сохранённых событий
 владельцев описывается в infrastructure. Это не импорт локальных баз.
+
+
+## Цена учётной записи и переход со старой модели
+
+- `records[].currentPrice` содержит цену конкретной записи; `records[].prices` — её историю в административном снимке.
+- `priceRange` связи — производные `min`, `max`, `currencyCode`, `currency`. Store считает диапазон только по записям, прошедшим query-фильтры. Суммы остаются строками; сравнение выполняется в целых копейках. Для разных валют единого диапазона нет (`null`).
+- Store Product events имеют `schemaVersion=3`; Inventory events сохраняют `schemaVersion=2`.
+- Миграция `RecordPrices1795300000000` копирует полную историю каждой прежней цены во все учётки связи. Суммы, валюта, периоды и причины сохраняются; новые истории получают отдельные UUID. UUID учёток, остатки и версии агрегатов сохраняются.
+- Cart сначала обновляется до reader, принимающего Store v2/v3. Bootstrap Cart сверяет цены с авторитетным Store даже при равной версии, чтобы обновить идентичность цен после миграции. Старые события не откатывают такой снимок.
+- Изменение схемы несовместимо со старым Store-процессом: переименование FK нельзя выполнять, пока он обслуживает запросы. Для этого перехода сначала обновить readers, остановить старые Store writers, сохранить backup, выполнить миграцию и запустить новый Store; затем перезапустить Cart для авторитетного bootstrap и обновить UI. Обычный rolling update с миграцией под старым процессом для этого перехода не подходит. Откат через down запрещён, поскольку цены записей уже могут различаться.

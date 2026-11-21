@@ -102,3 +102,12 @@ OutboxModule из @sellgar/outbox подключается один раз в Ap
 - Внутренние container/Service: 8080, без Ingress. `/health` проверяет PostgreSQL и оба RMQ-consumer.
 - CI проверяет unit/integration tests на временной PostgreSQL 16; финальный runtime не содержит БД или test tooling.
 - Миграционный Job предшествует Deployment. Локальные данные и env в Git/образ не включать.
+
+## Цены учётных записей
+
+Цена и история принадлежат accounting_record (price_history.record_uuid), не store_offer.
+Новая запись требует currentPrice; отсутствие поля у существующей сохраняет цену.
+Смена цены закрывает предыдущую строку и создаёт новую в транзакции Store Product с его версией и outbox.
+В полном снимке history загружается отдельным batch-запросом, без JOIN history × records × clarifications.
+priceRange вычисляется Store по уже отфильтрованным records; при разных валютах единого диапазона нет.
+Store Product event schemaVersion=3, Inventory event schemaVersion=2. Порядок несовместимой миграции описан в README.

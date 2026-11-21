@@ -9,7 +9,7 @@ export class PriceHistoryEntity {
 
   @Expose()
   @IsUUID()
-  offerUuid: string;
+  recordUuid: string;
 
   @Expose()
   @IsString()

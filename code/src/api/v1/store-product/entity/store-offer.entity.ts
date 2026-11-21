@@ -12,7 +12,7 @@ import {
 } from 'class-validator';
 import { ProductSnapshotEntity } from './product-snapshot.entity';
 import { VariantSnapshotEntity } from './variant-snapshot.entity';
-import { PriceHistoryEntity } from './price-history.entity';
+import { PriceRangeEntity } from './price-range.entity';
 import { AccountingRecordEntity } from './accounting-record.entity';
 import { StoreOfferStatus } from '../enum/store-offer-status.enum';
 
@@ -58,16 +58,10 @@ export class StoreOfferEntity {
   showing: boolean;
 
   @Expose()
-  @IsArray()
-  @ValidateNested()
-  @Type(() => PriceHistoryEntity)
-  prices: PriceHistoryEntity[];
-
-  @Expose()
   @IsOptional()
   @ValidateNested()
-  @Type(() => PriceHistoryEntity)
-  currentPrice?: PriceHistoryEntity | null;
+  @Type(() => PriceRangeEntity)
+  priceRange: PriceRangeEntity | null;
 
   @Expose()
   @IsArray()

@@ -1,6 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { EntityManager } from 'typeorm';
+import { PriceHistoryModel } from '../model/price-history.model';
 import { AccountingRecordModel } from '../model/accounting-record.model';
 import { RecordClarificationModel } from '../model/record-clarification.model';
 import { RecordInventoryModel } from '../model/record-inventory.model';
@@ -14,7 +15,9 @@ export class AccountingRecordRepository {
     inputs: AccountingRecordInputCommand[] | undefined,
   ): Promise<void> {
     const existing = await manager.findBy(AccountingRecordModel, { offerUuid });
-    const records = inputs ?? (existing.length ? [] : [{}]);
+    const records = inputs ?? [];
+    if (!existing.length && !records.length)
+      throw new ConflictException('A new offer requires an accounting record with a price');
     const existingByUuid = new Map(existing.map((record) => [record.uuid, record]));
     const seen = new Set<string>();
     let nextOrder =
@@ -44,6 +47,7 @@ export class AccountingRecordRepository {
           { article: input.article ?? record.article, order, version: () => 'version + 1' },
         );
       } else {
+        if (!input.currentPrice) throw new ConflictException('A new accounting record requires a price');
         const recordUuid = randomUUID();
         await manager.insert(AccountingRecordModel, {
           uuid: recordUuid,
@@ -53,6 +57,22 @@ export class AccountingRecordRepository {
         });
         await manager.insert(RecordInventoryModel, { recordUuid, quantity: 0, reserved: 0 });
         record = await manager.findOneByOrFail(AccountingRecordModel, { uuid: recordUuid });
+      }
+      if (input.currentPrice) {
+        const [integer, fraction = ''] = input.currentPrice.value.split('.');
+        const value = `${integer.replace(/^0+(?=\d)/, '')}.${fraction.padEnd(2, '0')}`;
+        const current = await manager.findOne(PriceHistoryModel, {
+          where: { recordUuid: record.uuid },
+          order: { createdAt: 'DESC', uuid: 'DESC' },
+        });
+        if (!current || current.value !== value || current.currencyCode !== input.currentPrice.currencyCode) {
+          if (current) await manager.update(PriceHistoryModel, { uuid: current.uuid }, { endsAt: new Date() });
+          await manager.insert(PriceHistoryModel, {
+            recordUuid: record.uuid,
+            value,
+            currencyCode: input.currentPrice.currencyCode,
+          });
+        }
       }
       if (input.clarifications !== undefined) {
         await manager.delete(RecordClarificationModel, { recordUuid: record.uuid });

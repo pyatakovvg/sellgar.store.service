@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager, ObjectLiteral, SelectQueryBuilder } from 'typeorm';
+import { DataSource, EntityManager, In, ObjectLiteral, SelectQueryBuilder } from 'typeorm';
 import { AccountingRecordModel } from '../model/accounting-record.model';
 import { plainToInstance } from 'class-transformer';
 import { StoreProductModel } from '../model/store-product.model';
@@ -25,6 +25,7 @@ export class StoreProductQueryRepository {
       'DESC',
     );
     const [rows, count] = await builder.getManyAndCount();
+    await this.loadPrices(rows, this.dataSource.manager);
     return { data: rows.map((row) => this.toEntity(row)), meta: { totalRows: count } };
   }
 
@@ -37,6 +38,7 @@ export class StoreProductQueryRepository {
       .andWhere('storeProduct.uuid = :uuid', { uuid })
       .getOne();
     if (!row) throw new NotFoundException('Store product not found');
+    await this.loadPrices([row], manager);
     return this.toEntity(row);
   }
 
@@ -129,14 +131,18 @@ export class StoreProductQueryRepository {
   private toEntity(row: StoreProductModel): StoreProductEntity {
     return plainToInstance(
       StoreProductEntity,
-      { ...row, categoryUuids: row.categoryLinks.map((link) => link.categoryUuid).sort() },
+      {
+        ...row,
+        offers: row.offers.map((offer) => ({ ...offer, priceRange: this.priceRange(offer) })),
+        categoryUuids: row.categoryLinks.map((link) => link.categoryUuid).sort(),
+      },
       { excludeExtraneousValues: true },
     );
   }
   private toOfferEntity(row: StoreOfferModel): StorefrontOfferEntity {
     return plainToInstance(
       StorefrontOfferEntity,
-      { ...row, shopUuid: row.storeProduct.shopUuid },
+      { ...row, priceRange: this.priceRange(row), shopUuid: row.storeProduct.shopUuid },
       { excludeExtraneousValues: true },
     );
   }
@@ -158,23 +164,20 @@ export class StoreProductQueryRepository {
       .leftJoinAndSelect('storeProduct.categoryLinks', 'categoryLinks')
       .leftJoinAndSelect('storeProduct.offers', 'offer')
       .leftJoinAndSelect('offer.variantSnapshot', 'variantSnapshot')
-      .leftJoinAndSelect('offer.prices', 'prices')
-      .leftJoinAndSelect('prices.currency', 'currency')
+      .leftJoinAndSelect('offer.records', 'records')
       .leftJoinAndMapOne(
-        'offer.currentPrice',
+        'records.currentPrice',
         PriceHistoryModel,
         'current_price',
-        'current_price.offerUuid = offer.uuid AND current_price.uuid = ' +
-          '(SELECT price.uuid FROM price_history price WHERE price.offer_uuid = offer.uuid ORDER BY price.created_at DESC, price.uuid DESC LIMIT 1)',
+        'current_price.recordUuid = records.uuid AND current_price.uuid = ' +
+          '(SELECT price.uuid FROM price_history price WHERE price.record_uuid = records.uuid ORDER BY price.created_at DESC, price.uuid DESC LIMIT 1)',
       )
       .leftJoinAndSelect('current_price.currency', 'current_price_currency')
-      .leftJoinAndSelect('offer.records', 'records')
       .leftJoinAndSelect('records.clarifications', 'clarifications')
       .leftJoinAndSelect('records.inventory', 'inventory')
       .addOrderBy('records.order', 'ASC')
       .addOrderBy('clarifications.position', 'ASC')
-      .addOrderBy('offer.createdAt', 'ASC')
-      .addOrderBy('prices.createdAt', 'DESC');
+      .addOrderBy('offer.createdAt', 'ASC');
   }
 
   buildStoreOfferQuery(manager: EntityManager = this.dataSource.manager) {
@@ -188,24 +191,51 @@ export class StoreProductQueryRepository {
         'productSnapshot.productUuid = offer.productUuid',
       )
       .leftJoinAndSelect('offer.variantSnapshot', 'variantSnapshot')
+      .leftJoinAndSelect('offer.records', 'records')
       .leftJoinAndMapOne(
-        'offer.currentPrice',
+        'records.currentPrice',
         PriceHistoryModel,
         'current_price',
-        'current_price.offerUuid = offer.uuid AND current_price.uuid = ' +
-          '(SELECT price.uuid FROM price_history price WHERE price.offer_uuid = offer.uuid ORDER BY price.created_at DESC, price.uuid DESC LIMIT 1)',
+        'current_price.recordUuid = records.uuid AND current_price.uuid = ' +
+          '(SELECT price.uuid FROM price_history price WHERE price.record_uuid = records.uuid ORDER BY price.created_at DESC, price.uuid DESC LIMIT 1)',
       )
       .leftJoinAndSelect('current_price.currency', 'current_price_currency')
-      .leftJoinAndSelect('offer.records', 'records')
       .leftJoinAndSelect('records.clarifications', 'clarifications')
       .leftJoinAndSelect('records.inventory', 'inventory')
       .addOrderBy('records.order', 'ASC')
       .addOrderBy('clarifications.position', 'ASC');
   }
 
-  findByUuidWithManager(manager: EntityManager, storeProductUuid: string) {
-    return this.buildStoreProductQuery(manager)
-      .where('storeProduct.uuid = :uuid', { uuid: storeProductUuid })
-      .getOneOrFail();
+  private async loadPrices(rows: StoreProductModel[], manager: EntityManager): Promise<void> {
+    const records = rows.flatMap((row) => row.offers.flatMap((offer) => offer.records));
+    if (!records.length) return;
+    const prices = await manager.find(PriceHistoryModel, {
+      where: { recordUuid: In(records.map((record) => record.uuid)) },
+      relations: { currency: true },
+      order: { createdAt: 'DESC', uuid: 'DESC' },
+    });
+    const byRecord = new Map<string, PriceHistoryModel[]>();
+    for (const price of prices) {
+      const history = byRecord.get(price.recordUuid) ?? [];
+      history.push(price);
+      byRecord.set(price.recordUuid, history);
+    }
+    for (const record of records) record.prices = byRecord.get(record.uuid) ?? [];
+  }
+
+  private priceRange(offer: StoreOfferModel) {
+    const prices = offer.records.flatMap((record) => {
+      const price = record.currentPrice;
+      return price ? [price] : [];
+    });
+    if (!prices.length || prices.some((price) => price.currencyCode !== prices[0].currencyCode)) return null;
+    const units = (value: string) => BigInt(value.replace('.', ''));
+    let min = prices[0];
+    let max = prices[0];
+    for (const price of prices) {
+      if (units(price.value) < units(min.value)) min = price;
+      if (units(price.value) > units(max.value)) max = price;
+    }
+    return { min: min.value, max: max.value, currencyCode: min.currencyCode, currency: min.currency };
   }
 }

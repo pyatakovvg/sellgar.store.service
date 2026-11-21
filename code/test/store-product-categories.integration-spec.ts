@@ -51,7 +51,7 @@ describe('Store product category assignments in PostgreSQL', () => {
     shopUuid,
     productUuid,
     showing: true,
-    offers: [{ variantUuid, showing: true, currentPrice: { value: '125.5', currencyCode: 'RUB' } }],
+    offers: [{ variantUuid, showing: true, records: [{ currentPrice: { value: '125.5', currencyCode: 'RUB' } }] }],
   });
   const event = (
     uuid: string,
